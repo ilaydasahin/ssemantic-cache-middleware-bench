@@ -1,0 +1,23 @@
+# Maven
+target/
+*.class
+
+# Python
+venv*/
+__pycache__/
+*.pyc
+.ipynb_checkpoints/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Project specific
+results/
+logs/
+data/
+models/
+*.log
+.DS_Store

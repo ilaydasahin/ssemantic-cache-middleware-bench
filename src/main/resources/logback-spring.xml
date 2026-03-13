@@ -1,0 +1,93 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  ============================================================
+  Logback Configuration for Semantic Cache Benchmark
+  ============================================================
+  Scientific purpose: structured, timestamped logging ensures that
+  every experiment run produces a self-contained audit trail.
+  The OUTPUT_DIR appender writes a dedicated log file per JVM
+  invocation, keyed on the experiment timestamp.
+
+  Q1 Reproducibility (M.8 Level 2):
+    - Log file captures full ExperimentConfig at startup
+    - All algorithm decisions are logged at INFO level
+    - Warnings (e.g., Redis fallback, dataset parse errors) at WARN
+    - Full stack traces on unexpected failures at ERROR
+
+  Usage:
+    Log files are written to logs/benchmark-<date>.log.
+    Retain these alongside result JSON files when archiving
+    experiment artifacts.
+-->
+<configuration scan="true" scanPeriod="30 seconds">
+
+  <!-- ═══════════════════════════════════════════════════════════════════════
+       Appender 1: Console — Human-readable during interactive runs
+       ─────────────────────────────────────────────────────────────────────── -->
+  <appender name="CONSOLE" class="ch.qos.logback.core.ConsoleAppender">
+    <encoder>
+      <!-- Timestamp | level | logger (short) | message -->
+      <pattern>%d{HH:mm:ss.SSS} %highlight(%-5level) %cyan(%-35.35logger{35}) | %msg%n</pattern>
+    </encoder>
+    <!-- Show INFO and above on console during benchmark runs -->
+    <filter class="ch.qos.logback.classic.filter.ThresholdFilter">
+      <level>INFO</level>
+    </filter>
+  </appender>
+
+  <!-- ═══════════════════════════════════════════════════════════════════════
+       Appender 2: File — Full audit trail, DEBUG+ detail
+       ─────────────────────────────────────────────────────────────────────── -->
+  <appender name="EXPERIMENT_LOG" class="ch.qos.logback.core.rolling.RollingFileAppender">
+    <file>logs/benchmark-current.log</file>
+
+    <!-- One file per day, keep last 30 days -->
+    <rollingPolicy class="ch.qos.logback.core.rolling.TimeBasedRollingPolicy">
+      <fileNamePattern>logs/benchmark-%d{yyyy-MM-dd}.log</fileNamePattern>
+      <maxHistory>30</maxHistory>
+    </rollingPolicy>
+
+    <encoder>
+      <!-- Full timestamp | thread | level | logger | message | exception -->
+      <pattern>%d{yyyy-MM-dd HH:mm:ss.SSS} [%thread] %-5level %-50.50logger{50} | %msg%n%ex</pattern>
+    </encoder>
+  </appender>
+
+  <!-- ═══════════════════════════════════════════════════════════════════════
+       Logger configuration
+       ─────────────────────────────────────────────────────────────────────── -->
+
+  <!-- Benchmark pipeline: DEBUG to capture algorithm decisions -->
+  <logger name="com.semcache.benchmark" level="DEBUG" additivity="false">
+    <appender-ref ref="CONSOLE"/>
+    <appender-ref ref="EXPERIMENT_LOG"/>
+  </logger>
+
+  <!-- Cache service: INFO — logs hit/miss and threshold decisions -->
+  <logger name="com.semcache.service" level="INFO" additivity="false">
+    <appender-ref ref="CONSOLE"/>
+    <appender-ref ref="EXPERIMENT_LOG"/>
+  </logger>
+
+  <!-- Redis / Jedis: WARN only — connection noise pollutes experiment logs -->
+  <logger name="redis.clients.jedis" level="WARN" additivity="false">
+    <appender-ref ref="EXPERIMENT_LOG"/>
+  </logger>
+
+  <!-- Spring Boot internals: WARN during benchmark to reduce noise -->
+  <logger name="org.springframework" level="WARN" additivity="false">
+    <appender-ref ref="EXPERIMENT_LOG"/>
+  </logger>
+
+  <!-- ONNX Runtime: WARN — verbose model-loading logs obscure experiment output -->
+  <logger name="ai.onnxruntime" level="WARN" additivity="false">
+    <appender-ref ref="EXPERIMENT_LOG"/>
+  </logger>
+
+  <!-- Root logger: INFO to console + file -->
+  <root level="INFO">
+    <appender-ref ref="CONSOLE"/>
+    <appender-ref ref="EXPERIMENT_LOG"/>
+  </root>
+
+</configuration>

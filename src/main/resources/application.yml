@@ -1,0 +1,159 @@
+# ============================================
+# Semantic Cache Benchmark Configuration
+# ============================================
+# All parameters in one file — no hardcoded values (M.8 compliance)
+
+spring:
+  data:
+    redis:
+      host: 127.0.0.1
+      port: 6379
+      lettuce:
+        pool:
+          max-active: 512
+          max-idle: 64
+          min-idle: 8
+          max-wait: 1000ms
+  application:
+    name: semantic-cache-benchmark
+
+
+# ============================================
+# Semantic Cache Configuration
+# ============================================
+cache:
+  # Enable HNSW (RedisSearch) — set to false for Brute-force ablation study (§5.5)
+  hnsw-enabled: true
+
+  # Similarity threshold (θ) — sweep values: 0.80, 0.85, 0.90, 0.95
+  similarityThreshold: 0.90
+  
+  # Number of nearest neighbors for KNN search
+  knn-k: 5
+  
+  # Maximum cache entries
+  max-entries: 50000
+  
+  # TTL in seconds (86400 = 24 hours)
+  ttl-seconds: 86400
+  
+  # Cache strategy: SEMANTIC, EXACT_MATCH, NONE
+  strategy: SEMANTIC
+  
+  # HNSW index parameters
+  hnsw:
+    m: 16
+    ef-construction: 200
+    ef-runtime: 100
+
+# ============================================
+# Embedding Model Configuration
+# ============================================
+embedding:
+  # Model name: minilm, mpnet, tinybert
+  model-name: minilm
+  
+  # Model paths (ONNX format)
+  models:
+    minilm:
+      path: models/all-MiniLM-L6-v2/model.onnx
+      tokenizer-path: models/all-MiniLM-L6-v2/vocab.txt
+      dimension: 384
+      # T2: MiniLM is optimized for short sequences; 128 is its practical max
+      max-sequence-length: 128
+    mpnet:
+      path: models/all-mpnet-base-v2/model.onnx
+      tokenizer-path: models/all-mpnet-base-v2/vocab.txt
+      dimension: 768
+      # T2: MPNet supports up to 384 tokens — use its full capacity
+      max-sequence-length: 384
+    tinybert:
+      path: models/paraphrase-TinyBERT-L6-v2/model.onnx
+      tokenizer-path: models/paraphrase-TinyBERT-L6-v2/vocab.txt
+      dimension: 312
+      max-sequence-length: 128
+  
+  # Default maximum input token length (fallback when model-specific not set)
+  max-length: 256
+
+# ============================================
+# LLM Configuration (Gemini API)
+# ============================================
+llm:
+  provider: gemini
+  model: gemini-2.0-flash
+  temperature: 0.0
+  max-output-tokens: 1024
+  api-key: ${GEMINI_API_KEY:REPLACE_ME}
+
+# ============================================
+# Benchmark Configuration
+# ============================================
+benchmark:
+  # Random seeds for reproducibility (5 independent runs)
+  seeds: [42, 123, 456, 789, 1024]
+  
+  # Concurrent user levels for throughput test
+  concurrent-users: [50, 100, 500, 1000]
+  
+  # S3: Configurable warmup ratio (fraction of dataset used for cache pre-population)
+  warmup-ratio: 0.30
+  
+  # Zipfian skew parameter (s) — 0.0 = uniform, 0.7-1.0 = realistic skew (§5.4)
+  zipfian-skew: 0.0
+  
+  # Adversarial noise injection probability [0,1] (§5.6)
+  noise-probability: 0.0
+  
+  # Datasets
+  datasets:
+    - name: msmarco
+      path: data/msmarco_sample_with_paraphrases.jsonl
+      size: 10000
+    - name: natural-questions
+      path: data/nq_sample_with_paraphrases.jsonl
+      size: 10000
+    - name: quora-pairs
+      path: data/qqp_sample_with_paraphrases.jsonl
+      size: 10000
+
+# ============================================
+# Metrics & Monitoring
+# ============================================
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,prometheus,metrics
+  metrics:
+    export:
+      prometheus:
+        enabled: true
+    tags:
+      application: semantic-cache-benchmark
+    distribution:
+      percentiles-histogram:
+        http.server.requests: true
+        llm.latency: true
+        embedding.latency: true
+        cache.lookup.latency: true
+      percentiles:
+        http.server.requests: 0.5, 0.9, 0.95, 0.99
+
+server:
+  port: 0
+
+---
+# ============================================
+# Benchmark Profile — CLI-only mode
+# ============================================
+# Activated via: -Dspring.profiles.active=benchmark,benchmark-mock
+spring:
+  config:
+    activate:
+      on-profile: benchmark
+  main:
+    # Disable embedded web server when running in benchmark mode.
+    # Benchmarks run as CommandLineRunner — no HTTP endpoint needed.
+    # This prevents port 8181 conflicts between consecutive experiment runs.
+    web-application-type: NONE
