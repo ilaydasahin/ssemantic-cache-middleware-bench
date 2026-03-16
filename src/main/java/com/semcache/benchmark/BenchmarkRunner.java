@@ -277,7 +277,7 @@ public class BenchmarkRunner {
      */
     private List<QueryLog> processTestSet(List<DatasetRecord> testSet, ExperimentConfig config) {
         int testSize = testSet.size();
-        List<QueryLog> queryLogs = new ArrayList<>(testSize);
+        List<QueryLog> queryLogs = java.util.Collections.synchronizedList(new ArrayList<>(testSize));
 
         // M.6 Gold Standard: Zipfian Distribution Generator
         // Simulates realistic "Head/Tail" traffic where some queries are much more
@@ -295,7 +295,8 @@ public class BenchmarkRunner {
                 queryIndices.add(i);
         }
 
-        for (int index : queryIndices) {
+        // TURBO MODE: Parallel processing of the test set across all available LLM keys.
+        queryIndices.parallelStream().forEach(index -> {
             DatasetRecord record = testSet.get(index);
             long wallClockStart = System.nanoTime();
 
@@ -364,10 +365,10 @@ public class BenchmarkRunner {
                         totalMs, lookupResult.embeddingTimeMs(), llmLatencyMs));
             }
 
-            if (queryLogs.size() % 1000 == 0) {
+            if (queryLogs.size() % 100 == 0) {
                 log.info("Progress: {}/{} queries processed...", queryLogs.size(), testSize);
             }
-        }
+        });
 
         log.info("Test phase complete: {} queries processed", testSet.size());
         return queryLogs;

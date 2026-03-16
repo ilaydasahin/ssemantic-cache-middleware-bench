@@ -54,8 +54,10 @@ public class GeminiService implements LLMService {
     private Counter llmErrorCounter;
     private Counter keyRotationCounter;
     
-    // M.6/M.8 Robustness: Rate Limiter to stay within 15 RPM quota (Free Tier)
-    private final Semaphore rateLimiter = new Semaphore(1);
+    // M.6/M.8 Robustness: Parallel Rate Limiting
+    // We allow up to apiKeys.length concurrent requests, but each key must follow 4.8s spacing.
+    private Semaphore parallelLimiter;
+    private final Map<String, java.util.concurrent.atomic.AtomicLong> lastKeyCallTime = new java.util.concurrent.ConcurrentHashMap<>();
     private static final Duration CALL_SPACING = Duration.ofMillis(4800); // 12.5 RPM (Safe buffer for 15 RPM limit)
 
     public GeminiService(MeterRegistry meterRegistry) {
@@ -68,11 +70,15 @@ public class GeminiService implements LLMService {
             this.apiKeys = apiKeysString.split(",");
             for (int i = 0; i < apiKeys.length; i++) {
                 apiKeys[i] = apiKeys[i].trim();
+                lastKeyCallTime.put(apiKeys[i], new java.util.concurrent.atomic.AtomicLong(0));
             }
         } else {
             this.apiKeys = new String[0];
             log.error("No API keys provided in llm.api-keys");
         }
+
+        // Parallel permits = number of keys
+        this.parallelLimiter = new Semaphore(Math.max(1, apiKeys.length));
 
         this.webClient = WebClient.builder()
                 .baseUrl(GEMINI_API_URL)
@@ -109,14 +115,11 @@ public class GeminiService implements LLMService {
      */
     public Mono<String> generate(String query) {
         return Mono.fromCallable(() -> {
-            rateLimiter.acquire();
+            parallelLimiter.acquire();
             return query;
         })
-        .delayElement(CALL_SPACING) // Throttle to prevent 429
-        .flatMap(q -> {
-            return attemptGenerate(q, 0);
-        })
-        .doFinally(signalType -> rateLimiter.release());
+        .flatMap(q -> attemptGenerate(q, 0))
+        .doFinally(signalType -> parallelLimiter.release());
     }
 
     private Mono<String> attemptGenerate(String query, int attempt) {
@@ -124,10 +127,33 @@ public class GeminiService implements LLMService {
             return Mono.error(new RuntimeException("No API keys available."));
         }
         
-        int keyIndex = currentKeyIndex.get() % apiKeys.length;
-        String currentKey = apiKeys[keyIndex];
+        // Pick a key that has been idle for at least CALL_SPACING
+        String currentKey = null;
+        int keyIndex = -1;
         
-        llmCallCounter.increment();
+        synchronized (apiKeys) {
+            for (int i = 0; i < apiKeys.length; i++) {
+                int idx = (currentKeyIndex.get() + i) % apiKeys.length;
+                String k = apiKeys[idx];
+                long lastCall = lastKeyCallTime.get(k).get();
+                if (System.currentTimeMillis() - lastCall >= CALL_SPACING.toMillis()) {
+                    currentKey = k;
+                    keyIndex = idx;
+                    lastKeyCallTime.get(k).set(System.currentTimeMillis());
+                    break;
+                }
+            }
+        }
+
+        // If no key is ready, wait for the first one that will be ready
+        if (currentKey == null) {
+            return Mono.delay(Duration.ofMillis(500))
+                       .flatMap(d -> attemptGenerate(query, attempt));
+        }
+
+        final int finalKeyIndex = keyIndex;
+        final String finalKey = currentKey;
+
         Map<String, Object> requestBody = Map.of(
                 "contents", List.of(
                         Map.of("parts", List.of(
@@ -135,12 +161,11 @@ public class GeminiService implements LLMService {
                 "generationConfig", Map.of(
                         "temperature", temperature,
                         "maxOutputTokens", maxOutputTokens));
-
         long start = System.nanoTime();
         return webClient.post()
                 .uri(uriBuilder -> uriBuilder
                     .path(model + ":generateContent")
-                    .queryParam("key", currentKey)
+                    .queryParam("key", finalKey)
                     .build())
                 .bodyValue(requestBody)
                 .retrieve()
@@ -157,7 +182,7 @@ public class GeminiService implements LLMService {
                     if (errorMsg.contains("429") || errorMsg.toLowerCase().contains("quota")) {
                         if (attempt < apiKeys.length) {
                             log.warn("Key index {} (ends in ..{}) hit quota limit. Rotating to next key... (Attempt {}/{})", 
-                                keyIndex, currentKey.substring(Math.max(0, currentKey.length() - 4)), attempt + 1, apiKeys.length);
+                                finalKeyIndex, finalKey.substring(Math.max(0, finalKey.length() - 4)), attempt + 1, apiKeys.length);
                             currentKeyIndex.incrementAndGet();
                             keyRotationCounter.increment();
                             return attemptGenerate(query, attempt + 1);

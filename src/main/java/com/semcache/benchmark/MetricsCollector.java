@@ -186,7 +186,7 @@ public class MetricsCollector {
     // Internal state
     // ─────────────────────────────────────────────────────────────────────────
 
-    private final List<Observation> observations = new ArrayList<>();
+    private final List<Observation> observations = Collections.synchronizedList(new ArrayList<>());
 
     // ─────────────────────────────────────────────────────────────────────────
     // Value types
