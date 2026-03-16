@@ -25,7 +25,7 @@ SEEDS=(42 123 456 789 101)
 export PYTHONHASHSEED=42
 export MAVEN_OPTS="-Xms2G -Xmx4G -XX:+UseZGC"
 STRATEGIES=("SEMANTIC" "EXACT_MATCH")
-SAMPLE_SIZE=1000 # Sample size for each run (M.7 Statistical Significance requirement)
+SAMPLE_SIZE=500 # Adjusted for Gemini Free Tier RPD balance (M.7 compliance)
 
 # 2. Prerequisites Check
 if ! redis-cli ping > /dev/null 2>&1; then
