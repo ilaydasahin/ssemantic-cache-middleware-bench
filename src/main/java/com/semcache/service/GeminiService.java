@@ -11,6 +11,8 @@ import org.springframework.stereotype.Service;
 import org.springframework.web.reactive.function.client.WebClient;
 import org.springframework.context.annotation.Profile;
 import reactor.core.publisher.Mono;
+import java.time.Duration;
+import java.util.concurrent.Semaphore;
 
 import java.util.List;
 import java.util.Map;
@@ -47,6 +49,10 @@ public class GeminiService implements LLMService {
     private Timer llmTimer;
     private Counter llmCallCounter;
     private Counter llmErrorCounter;
+    
+    // M.6/M.8 Robustness: Rate Limiter to stay within 15 RPM quota (Free Tier)
+    private final Semaphore rateLimiter = new Semaphore(1);
+    private static final Duration CALL_SPACING = Duration.ofMillis(4800); // 12.5 RPM (Safe buffer for 15 RPM limit)
 
     public GeminiService(MeterRegistry meterRegistry) {
         this.meterRegistry = meterRegistry;
@@ -84,13 +90,18 @@ public class GeminiService implements LLMService {
      * @return LLM-generated response text
      */
     public Mono<String> generate(String query) {
-        return Mono.defer(() -> {
+        return Mono.fromCallable(() -> {
+            rateLimiter.acquire();
+            return query;
+        })
+        .delayElement(CALL_SPACING) // Throttle to prevent 429
+        .flatMap(q -> {
             llmCallCounter.increment();
 
             Map<String, Object> requestBody = Map.of(
                     "contents", List.of(
                             Map.of("parts", List.of(
-                                    Map.of("text", query)))),
+                                    Map.of("text", q)))),
                     "generationConfig", Map.of(
                             "temperature", temperature,
                             "maxOutputTokens", maxOutputTokens));
@@ -107,11 +118,11 @@ public class GeminiService implements LLMService {
                     .map(this::extractResponseText)
                     .map(response -> {
                         long durationMs = (System.nanoTime() - start) / 1_000_000;
-                        llmTimer.record(java.time.Duration.ofMillis(durationMs));
+                        llmTimer.record(Duration.ofMillis(durationMs));
                         log.debug("Gemini response (Reactive): {}ms", durationMs);
                         return response != null ? response : "No response generated.";
                     })
-                    .retryWhen(reactor.util.retry.Retry.backoff(5, java.time.Duration.ofSeconds(2))
+                    .retryWhen(reactor.util.retry.Retry.backoff(10, Duration.ofSeconds(5)) // More aggressive backoff
                         .filter(e -> {
                             Throwable current = e;
                             while (current != null) {
@@ -120,12 +131,13 @@ public class GeminiService implements LLMService {
                             }
                             return false;
                         })
-                        .doBeforeRetry(sig -> log.warn("Gemini Rate Limited (429). Retrying... (Attempt {}/5)", sig.totalRetriesInARow() + 1)))
+                        .doBeforeRetry(sig -> log.warn("Gemini Rate Limited (429). Retrying... (Attempt {}/10)", sig.totalRetriesInARow() + 1)))
                     .doOnError(e -> {
                         llmErrorCounter.increment();
                         log.error("Gemini API error (Reactive): {}", e.getMessage());
                     });
-        });
+        })
+        .doFinally(signalType -> rateLimiter.release());
     }
 
     /**

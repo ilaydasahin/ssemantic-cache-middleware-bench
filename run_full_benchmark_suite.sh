@@ -6,18 +6,24 @@ set -e
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PROJECT_DIR="${SCRIPT_DIR}"
-TIMESTAMP=$(date +%Y%m%d_%H%M%S)
-OUTPUT_DIR="${PROJECT_DIR}/results/${TIMESTAMP}"
-
-echo "=== Semantic Cache Benchmark - High Fidelity Matrix ==="
-echo "Output directory: ${OUTPUT_DIR}"
+OUTPUT_DIR_ARG=$1
+if [ -n "$OUTPUT_DIR_ARG" ]; then
+    OUTPUT_DIR="$OUTPUT_DIR_ARG"
+    echo "=== Resuming from directory: ${OUTPUT_DIR} ==="
+else
+    TIMESTAMP=$(date +%Y%m%d_%H%M%S)
+    OUTPUT_DIR="${PROJECT_DIR}/results/${TIMESTAMP}"
+    echo "=== New experiment run: ${OUTPUT_DIR} ==="
+fi
 mkdir -p "${OUTPUT_DIR}"
 
 # 1. Experimental Matrix (M.6 Compliance)
 THRESHOLDS=(0.75 0.80 0.85 0.90 0.95)
 MODELS=("minilm" "mpnet")
 DATASETS=("msmarco" "natural-questions")
-SEEDS=(42 123 456)
+SEEDS=(42 123 456 789 101)
+export PYTHONHASHSEED=42
+export MAVEN_OPTS="-Xms2G -Xmx4G -XX:+UseZGC"
 STRATEGIES=("SEMANTIC" "EXACT_MATCH")
 SAMPLE_SIZE=1000 # Sample size for each run (M.7 Statistical Significance requirement)
 
@@ -54,6 +60,11 @@ for DATASET in "${DATASETS[@]}"; do
         CURRENT=$((CURRENT + 1))
         RESULT_FILE="${OUTPUT_DIR}/baseline_${DATASET}_s${SEED}.json"
         
+        if [ -f "$RESULT_FILE" ]; then
+            echo "[${CURRENT}/${TOTAL}] SKIPPED: ${DATASET} (Seed ${SEED}) ✅ (Exists)"
+            continue
+        fi
+
         java -jar target/semantic-cache-benchmark-1.0.0.jar \
             --server.port=0 \
             --benchmark.strategy="EXACT_MATCH" \
@@ -61,7 +72,7 @@ for DATASET in "${DATASETS[@]}"; do
             --benchmark.current-seed="${SEED}" \
             --benchmark.sampleSize="${SAMPLE_SIZE}" \
             --benchmark.output-file="${RESULT_FILE}" \
-            --spring.profiles.active=benchmark,benchmark-mock > /dev/null 2>&1
+            --spring.profiles.active=benchmark > /dev/null 2>&1
         
         echo "[${CURRENT}/${TOTAL}] BASELINE: ${DATASET} (Seed ${SEED}) ✅"
     done
@@ -77,6 +88,11 @@ for THRESHOLD in "${THRESHOLDS[@]}"; do
                 CURRENT=$((CURRENT + 1))
                 RESULT_FILE="${OUTPUT_DIR}/${DATASET}_${MODEL}_t${THRESHOLD}_s${SEED}.json"
                 
+                if [ -f "$RESULT_FILE" ]; then
+                    echo "[${CURRENT}/${TOTAL}] SKIPPED LOCAL: ${DATASET}/${MODEL} @ θ=${THRESHOLD} (Seed ${SEED}) ✅ (Exists)"
+                    continue
+                fi
+
                 # Ensure HNSW is DISABLED to test the paper's local parallel claim
                 java -jar target/semantic-cache-benchmark-1.0.0.jar \
                     --server.port=0 \
@@ -88,7 +104,7 @@ for THRESHOLD in "${THRESHOLDS[@]}"; do
                     --benchmark.current-seed="${SEED}" \
                     --benchmark.sampleSize="${SAMPLE_SIZE}" \
                     --benchmark.output-file="${RESULT_FILE}" \
-                    --spring.profiles.active=benchmark,benchmark-mock >> "${OUTPUT_DIR}/experiment_local.log" 2>&1
+                    --spring.profiles.active=benchmark >> "${OUTPUT_DIR}/experiment_local.log" 2>&1
                 
                 echo "[${CURRENT}/${TOTAL}] LOCAL: ${DATASET}/${MODEL} @ θ=${THRESHOLD} (Seed ${SEED}) ✅"
             done
@@ -106,6 +122,11 @@ for THRESHOLD in "${THRESHOLDS[@]}"; do
                 CURRENT=$((CURRENT + 1))
                 RESULT_FILE="${OUTPUT_DIR}/remote_hnsw_${DATASET}_${MODEL}_t${THRESHOLD}_s${SEED}.json"
                 
+                if [ -f "$RESULT_FILE" ]; then
+                    echo "[${CURRENT}/${TOTAL}] SKIPPED REMOTE: ${DATASET}/${MODEL} @ θ=${THRESHOLD} (Seed ${SEED}) ✅ (Exists)"
+                    continue
+                fi
+
                 # Test with HNSW ENABLED
                 java -jar target/semantic-cache-benchmark-1.0.0.jar \
                     --server.port=0 \
@@ -117,7 +138,7 @@ for THRESHOLD in "${THRESHOLDS[@]}"; do
                     --benchmark.current-seed="${SEED}" \
                     --benchmark.sampleSize="${SAMPLE_SIZE}" \
                     --benchmark.output-file="${RESULT_FILE}" \
-                    --spring.profiles.active=benchmark,benchmark-mock >> "${OUTPUT_DIR}/experiment_remote.log" 2>&1
+                    --spring.profiles.active=benchmark >> "${OUTPUT_DIR}/experiment_remote.log" 2>&1
                 
                 echo "[${CURRENT}/${TOTAL}] REMOTE HNSW: ${DATASET}/${MODEL} @ θ=${THRESHOLD} (Seed ${SEED}) ✅"
             done
@@ -139,7 +160,7 @@ for MODE in "true" "false"; do
         --benchmark.parallel-enabled="${MODE}" \
         --benchmark.sampleSize=500 \
         --benchmark.output-file="${RESULT_FILE}" \
-        --spring.profiles.active=benchmark,benchmark-mock >> "${OUTPUT_DIR}/ablation.log" 2>&1
+        --spring.profiles.active=benchmark >> "${OUTPUT_DIR}/ablation.log" 2>&1
     echo "[${CURRENT}/${TOTAL}] Ablation: Parallel=${MODE} ✅"
 done
 
@@ -160,7 +181,7 @@ for SKEW in "${SKEWS[@]}"; do
             --benchmark.current-seed=42 \
             --benchmark.sampleSize="${SAMPLE_SIZE}" \
             --benchmark.output-file="${RESULT_FILE}" \
-            --spring.profiles.active=benchmark,benchmark-mock >> "${OUTPUT_DIR}/zipfian.log" 2>&1
+            --spring.profiles.active=benchmark >> "${OUTPUT_DIR}/zipfian.log" 2>&1
             
         echo "[${CURRENT}/${TOTAL}] ZIPFIAN: Skew=${SKEW} Dataset=${DATASET} ✅"
     done
@@ -182,7 +203,7 @@ for PROB in "${PROBS[@]}"; do
         --benchmark.current-seed=42 \
         --benchmark.sampleSize=1000 \
         --benchmark.output-file="${RESULT_FILE}" \
-        --spring.profiles.active=benchmark,benchmark-mock >> "${OUTPUT_DIR}/robustness.log" 2>&1
+        --spring.profiles.active=benchmark >> "${OUTPUT_DIR}/robustness.log" 2>&1
         
     echo "[${CURRENT}/${TOTAL}] ROBUSTNESS: NoiseProb=${PROB} ✅"
 done
