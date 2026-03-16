@@ -81,7 +81,7 @@ embedding:
 # ============================================
 llm:
   provider: gemini
-  model: gemini-1.5-flash
+  model: gemini-2.5-flash
   temperature: 0.0
   max-output-tokens: 1024
   api-keys: ${GEMINI_API_KEYS:REPLACE_ME}

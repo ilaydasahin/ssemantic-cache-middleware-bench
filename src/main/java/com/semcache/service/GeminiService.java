@@ -38,7 +38,7 @@ public class GeminiService implements LLMService {
     private String[] apiKeys;
     private final java.util.concurrent.atomic.AtomicInteger currentKeyIndex = new java.util.concurrent.atomic.AtomicInteger(0);
 
-    @Value("${llm.model:gemini-1.5-flash}")
+    @Value("${llm.model:gemini-2.5-flash}")
     private String model;
 
     @Value("${llm.temperature:0.0}")
