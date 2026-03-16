@@ -32,10 +32,13 @@ public class GeminiService implements LLMService {
     private static final Logger log = LoggerFactory.getLogger(GeminiService.class);
     private static final String GEMINI_API_URL = "https://generativelanguage.googleapis.com/v1beta/models/";
 
-    @Value("${llm.api-key:}")
-    private String apiKey;
+    @Value("${llm.api-keys:}")
+    private String apiKeysString;
 
-    @Value("${llm.model:gemini-2.0-flash}")
+    private String[] apiKeys;
+    private final java.util.concurrent.atomic.AtomicInteger currentKeyIndex = new java.util.concurrent.atomic.AtomicInteger(0);
+
+    @Value("${llm.model:gemini-1.5-flash}")
     private String model;
 
     @Value("${llm.temperature:0.0}")
@@ -49,6 +52,7 @@ public class GeminiService implements LLMService {
     private Timer llmTimer;
     private Counter llmCallCounter;
     private Counter llmErrorCounter;
+    private Counter keyRotationCounter;
     
     // M.6/M.8 Robustness: Rate Limiter to stay within 15 RPM quota (Free Tier)
     private final Semaphore rateLimiter = new Semaphore(1);
@@ -60,6 +64,16 @@ public class GeminiService implements LLMService {
 
     @PostConstruct
     public void init() {
+        if (apiKeysString != null && !apiKeysString.isEmpty()) {
+            this.apiKeys = apiKeysString.split(",");
+            for (int i = 0; i < apiKeys.length; i++) {
+                apiKeys[i] = apiKeys[i].trim();
+            }
+        } else {
+            this.apiKeys = new String[0];
+            log.error("No API keys provided in llm.api-keys");
+        }
+
         this.webClient = WebClient.builder()
                 .baseUrl(GEMINI_API_URL)
                 .build();
@@ -77,8 +91,12 @@ public class GeminiService implements LLMService {
                 .description("Number of LLM API errors")
                 .register(meterRegistry);
 
-        log.info("GeminiService initialized: model={}, temperature={}, maxTokens={}",
-                model, temperature, maxOutputTokens);
+        this.keyRotationCounter = Counter.builder("llm.key.rotations")
+                .description("Number of API key rotations")
+                .register(meterRegistry);
+
+        log.info("GeminiService initialized: model={}, keysLoaded={}, temperature={}, maxTokens={}",
+                model, apiKeys.length, temperature, maxOutputTokens);
     }
 
     /**
@@ -96,48 +114,61 @@ public class GeminiService implements LLMService {
         })
         .delayElement(CALL_SPACING) // Throttle to prevent 429
         .flatMap(q -> {
-            llmCallCounter.increment();
-
-            Map<String, Object> requestBody = Map.of(
-                    "contents", List.of(
-                            Map.of("parts", List.of(
-                                    Map.of("text", q)))),
-                    "generationConfig", Map.of(
-                            "temperature", temperature,
-                            "maxOutputTokens", maxOutputTokens));
-
-            long start = System.nanoTime();
-            return webClient.post()
-                    .uri(uriBuilder -> uriBuilder
-                        .path(model + ":generateContent")
-                        .queryParam("key", apiKey)
-                        .build())
-                    .bodyValue(requestBody)
-                    .retrieve()
-                    .bodyToMono(new org.springframework.core.ParameterizedTypeReference<Map<String, Object>>() {})
-                    .map(this::extractResponseText)
-                    .map(response -> {
-                        long durationMs = (System.nanoTime() - start) / 1_000_000;
-                        llmTimer.record(Duration.ofMillis(durationMs));
-                        log.debug("Gemini response (Reactive): {}ms", durationMs);
-                        return response != null ? response : "No response generated.";
-                    })
-                    .retryWhen(reactor.util.retry.Retry.backoff(10, Duration.ofSeconds(5)) // More aggressive backoff
-                        .filter(e -> {
-                            Throwable current = e;
-                            while (current != null) {
-                                if (current.getMessage() != null && current.getMessage().contains("429")) return true;
-                                current = current.getCause();
-                            }
-                            return false;
-                        })
-                        .doBeforeRetry(sig -> log.warn("Gemini Rate Limited (429). Retrying... (Attempt {}/10)", sig.totalRetriesInARow() + 1)))
-                    .doOnError(e -> {
-                        llmErrorCounter.increment();
-                        log.error("Gemini API error (Reactive): {}", e.getMessage());
-                    });
+            return attemptGenerate(q, 0);
         })
         .doFinally(signalType -> rateLimiter.release());
+    }
+
+    private Mono<String> attemptGenerate(String query, int attempt) {
+        if (apiKeys.length == 0) {
+            return Mono.error(new RuntimeException("No API keys available."));
+        }
+        
+        int keyIndex = currentKeyIndex.get() % apiKeys.length;
+        String currentKey = apiKeys[keyIndex];
+        
+        llmCallCounter.increment();
+        Map<String, Object> requestBody = Map.of(
+                "contents", List.of(
+                        Map.of("parts", List.of(
+                                Map.of("text", query)))),
+                "generationConfig", Map.of(
+                        "temperature", temperature,
+                        "maxOutputTokens", maxOutputTokens));
+
+        long start = System.nanoTime();
+        return webClient.post()
+                .uri(uriBuilder -> uriBuilder
+                    .path(model + ":generateContent")
+                    .queryParam("key", currentKey)
+                    .build())
+                .bodyValue(requestBody)
+                .retrieve()
+                .bodyToMono(new org.springframework.core.ParameterizedTypeReference<Map<String, Object>>() {})
+                .map(this::extractResponseText)
+                .map(response -> {
+                    long durationMs = (System.nanoTime() - start) / 1_000_000;
+                    llmTimer.record(Duration.ofMillis(durationMs));
+                    return response != null ? response : "No response generated.";
+                })
+                .onErrorResume(e -> {
+                    String errorMsg = e.getMessage() != null ? e.getMessage() : "";
+                    // If we hit a rate limit (429) or quota exceeded error
+                    if (errorMsg.contains("429") || errorMsg.toLowerCase().contains("quota")) {
+                        if (attempt < apiKeys.length) {
+                            log.warn("Key index {} (ends in ..{}) hit quota limit. Rotating to next key... (Attempt {}/{})", 
+                                keyIndex, currentKey.substring(Math.max(0, currentKey.length() - 4)), attempt + 1, apiKeys.length);
+                            currentKeyIndex.incrementAndGet();
+                            keyRotationCounter.increment();
+                            return attemptGenerate(query, attempt + 1);
+                        } else {
+                            log.error("ALL API keys have exhausted their daily quota. Halting.");
+                            return Mono.error(new RuntimeException("Daily quota exhausted for all " + apiKeys.length + " keys."));
+                        }
+                    }
+                    llmErrorCounter.increment();
+                    return Mono.error(e);
+                });
     }
 
     /**
@@ -153,7 +184,7 @@ public class GeminiService implements LLMService {
 
     /**
      * Estimate the cost of an API call based on token count.
-     * Gemini 2.0 Flash pricing (approximate):
+     * Gemini 1.5 Flash pricing (approximate):
      * - Input: $0.10 per 1M tokens
      * - Output: $0.40 per 1M tokens
      */

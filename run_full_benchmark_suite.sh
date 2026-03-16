@@ -25,7 +25,7 @@ SEEDS=(42 123 456 789 101)
 export PYTHONHASHSEED=42
 export MAVEN_OPTS="-Xms2G -Xmx4G -XX:+UseZGC"
 STRATEGIES=("SEMANTIC" "EXACT_MATCH")
-SAMPLE_SIZE=500 # Adjusted for Gemini Free Tier RPD balance (M.7 compliance)
+SAMPLE_SIZE=1000 # Q1 Standard Sample Size (M.7 Statistical Significance)
 
 # 2. Prerequisites Check
 if ! redis-cli ping > /dev/null 2>&1; then
@@ -33,8 +33,8 @@ if ! redis-cli ping > /dev/null 2>&1; then
     exit 1
 fi
 
-if [ -z "${GEMINI_API_KEY}" ]; then
-    echo "WARNING: GEMINI_API_KEY not set. Using actual LLM will fail."
+if [ -z "${GEMINI_API_KEYS}" ]; then
+    echo "WARNING: GEMINI_API_KEYS not set. Using actual LLM will fail."
 fi
 
 # 3. Build project
