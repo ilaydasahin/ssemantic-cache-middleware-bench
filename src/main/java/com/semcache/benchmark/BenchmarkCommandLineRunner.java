@@ -1,7 +1,6 @@
 package com.semcache.benchmark;
 
 import com.semcache.config.BenchmarkProperties;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.boot.CommandLineRunner;
@@ -24,8 +23,7 @@ public class BenchmarkCommandLineRunner implements CommandLineRunner {
             ThroughputBenchmarkRunner throughputRunner,
             EvictionStressTestRunner stressTestRunner,
             BenchmarkProperties properties,
-            DatasetLoader datasetLoader,
-            ObjectMapper objectMapper) {
+            DatasetLoader datasetLoader) {
         this.benchmarkRunner = benchmarkRunner;
         this.throughputRunner = throughputRunner;
         this.stressTestRunner = stressTestRunner;
@@ -38,15 +36,7 @@ public class BenchmarkCommandLineRunner implements CommandLineRunner {
 
         if (properties.isHeavyChurn() != null && properties.isHeavyChurn()) {
             log.info("Heavy churn mode enabled.");
-            String datasetName = properties.getCurrentDataset();
-            if (datasetName == null && !properties.getDatasets().isEmpty()) {
-                datasetName = properties.getDatasets().get(0).getName();
-            }
-            final String finalDatasetName = datasetName;
-            BenchmarkProperties.DatasetConfig datasetConfig = properties.getDatasets().stream()
-                    .filter(d -> d.getName().equalsIgnoreCase(finalDatasetName))
-                    .findFirst().orElse(properties.getDatasets().get(0));
-
+            BenchmarkProperties.DatasetConfig datasetConfig = resolveDatasetConfig(resolveCurrentDatasetName());
             stressTestRunner.runHeavyChurnTest(datasetConfig.getPath(), datasetLoader, properties.getOutputFile());
             System.exit(0);
             return;
@@ -55,19 +45,9 @@ public class BenchmarkCommandLineRunner implements CommandLineRunner {
         Integer singleConcurrentUsers = resolveThroughputUsers();
         if (singleConcurrentUsers != null) {
             log.info("Throughput mode: concurrent-users={}", singleConcurrentUsers);
-
-            String datasetName = properties.getCurrentDataset();
-            if (datasetName == null && !properties.getDatasets().isEmpty()) {
-                datasetName = properties.getDatasets().get(0).getName(); // fallback
-            }
-            final String finalDatasetName = datasetName;
-            BenchmarkProperties.DatasetConfig datasetConfig = properties.getDatasets().stream()
-                    .filter(d -> d.getName().equalsIgnoreCase(finalDatasetName))
-                    .findFirst().orElse(properties.getDatasets().get(0));
-
+            BenchmarkProperties.DatasetConfig datasetConfig = resolveDatasetConfig(resolveCurrentDatasetName());
             log.info("Loading dataset {} for throughput test...", datasetConfig.getName());
             java.util.List<DatasetLoader.DatasetRecord> dataset = datasetLoader.load(datasetConfig.getPath());
-
             throughputRunner.runForUsers(singleConcurrentUsers, dataset, properties.getOutputFile());
             System.exit(0);
             return;
@@ -83,10 +63,7 @@ public class BenchmarkCommandLineRunner implements CommandLineRunner {
             return;
         }
 
-        BenchmarkProperties.DatasetConfig datasetConfig = properties.getDatasets().stream()
-                .filter(d -> d.getName().equalsIgnoreCase(datasetName))
-                .findFirst().orElse(null);
-
+        BenchmarkProperties.DatasetConfig datasetConfig = findDatasetConfig(datasetName);
         if (datasetConfig == null) {
             log.error("Dataset not found.");
             System.exit(1);
@@ -100,29 +77,53 @@ public class BenchmarkCommandLineRunner implements CommandLineRunner {
                 datasetName,
                 datasetConfig.getPath(),
                 "auto",
-                (double) (properties.getSimilarityThreshold() != null ? properties.getSimilarityThreshold() : 0.90),
-                (String) (properties.getWarmupStrategy() != null ? properties.getWarmupStrategy() : "BIDIRECTIONAL"),
-                (double) (properties.getWarmupRatio() != null ? properties.getWarmupRatio() : 0.30),
+                properties.getSimilarityThreshold() != null ? properties.getSimilarityThreshold() : 0.90,
+                properties.getWarmupStrategy() != null ? properties.getWarmupStrategy() : "BIDIRECTIONAL",
+                properties.getWarmupRatio() != null ? properties.getWarmupRatio() : 0.30,
                 seed.longValue(),
-                (Integer) properties.getSampleSize(),
-                (boolean) (properties.getHnswEnabled() != null ? properties.getHnswEnabled() : true),
-                (String) (properties.getStrategy() != null ? properties.getStrategy() : "SEMANTIC"),
-                (int) (properties.getKnnK() != null ? properties.getKnnK() : 5),
-                (int) (properties.getMaxCacheEntries() != null ? properties.getMaxCacheEntries() : 50_000),
+                properties.getSampleSize(),
+                properties.getHnswEnabled() != null ? properties.getHnswEnabled() : true,
+                properties.getStrategy() != null ? properties.getStrategy() : "SEMANTIC",
+                properties.getKnnK() != null ? properties.getKnnK() : 5,
+                properties.getMaxCacheEntries() != null ? properties.getMaxCacheEntries() : 50_000,
                 86400L,
-                (Integer) null,
+                null,
                 zSkew,
                 nProb,
                 outputFile);
 
         try {
             benchmarkRunner.run(config);
-            log.info("Benchmark complete — rwritten to: {}", outputFile);
+            log.info("Benchmark complete — written to: {}", outputFile);
             System.exit(0);
         } catch (Exception e) {
             log.error("Benchmark run failed: {}", e.getMessage(), e);
             System.exit(1);
         }
+    }
+
+    /** Returns the current dataset name, falling back to the first configured dataset. */
+    private String resolveCurrentDatasetName() {
+        String name = properties.getCurrentDataset();
+        if (name == null && !properties.getDatasets().isEmpty()) {
+            name = properties.getDatasets().get(0).getName();
+        }
+        return name;
+    }
+
+    /** Finds the dataset config for the given name, falling back to first if not matched. */
+    private BenchmarkProperties.DatasetConfig resolveDatasetConfig(String name) {
+        return properties.getDatasets().stream()
+                .filter(d -> d.getName().equalsIgnoreCase(name))
+                .findFirst()
+                .orElse(properties.getDatasets().get(0));
+    }
+
+    private BenchmarkProperties.DatasetConfig findDatasetConfig(String name) {
+        return properties.getDatasets().stream()
+                .filter(d -> d.getName().equalsIgnoreCase(name))
+                .findFirst()
+                .orElse(null);
     }
 
     private Integer resolveThroughputUsers() {

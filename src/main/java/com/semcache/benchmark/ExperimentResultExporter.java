@@ -137,10 +137,10 @@ public class ExperimentResultExporter {
         envelope.put("avgLlmLatencyMs", round2(m.avgLlmLatencyMs()));
         envelope.put("memoryUsageMb", round2(m.memoryUsageMb()));
 
-        // Post-hoc metrics placeholder (populated by analyze_results.py from
-        // .logs.jsonl)
-        envelope.put("avgBertScore", 0.0);
-        envelope.put("avgRougeL", 0.0);
+        // Post-hoc metrics placeholder (populated by analyze_results.py from .logs.jsonl).
+        // Stored as null to distinguish "not yet computed" from a true score of 0.0.
+        envelope.put("avgBertScore", null);
+        envelope.put("avgRougeL", null);
 
         // ── Full config sub-object (for reproducibility) ──────────────────────
         envelope.put("config", config);
@@ -155,11 +155,11 @@ public class ExperimentResultExporter {
     }
 
     private double getMeterValue(String name, String statistic) {
-        return meterRegistry.find(name).timer() != null
-                ? (statistic.equals("max")
-                        ? meterRegistry.find(name).timer().max(java.util.concurrent.TimeUnit.MILLISECONDS)
-                        : meterRegistry.find(name).timer().mean(java.util.concurrent.TimeUnit.MILLISECONDS))
-                : 0.0;
+        var timer = meterRegistry.find(name).timer();
+        if (timer == null) return 0.0;
+        return statistic.equals("max")
+                ? timer.max(java.util.concurrent.TimeUnit.MILLISECONDS)
+                : timer.mean(java.util.concurrent.TimeUnit.MILLISECONDS);
     }
 
     /**
@@ -176,9 +176,9 @@ public class ExperimentResultExporter {
      * @param queryLogs      Per-query observations
      */
     private void exportQueryLogs(String resultFilePath, List<QueryLog> queryLogs) {
-        String logsPath = resultFilePath.replace(".json", ".logs.jsonl");
+        String logsPath = resultFilePath.replaceAll("\\.json$", ".logs.jsonl");
         try (java.io.PrintWriter writer = new java.io.PrintWriter(
-                new java.io.FileWriter(logsPath, false))) {
+                new java.io.BufferedWriter(new java.io.FileWriter(logsPath, false)))) {
             for (QueryLog ql : queryLogs) {
                 writer.println(simpleMapper.writeValueAsString(ql));
             }

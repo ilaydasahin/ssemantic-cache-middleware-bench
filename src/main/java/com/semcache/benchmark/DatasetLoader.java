@@ -145,9 +145,9 @@ public class DatasetLoader {
         List<DatasetRecord> warmupSet = new ArrayList<>(shuffledDataset.subList(0, warmupSize));
         List<DatasetRecord> testSet = new ArrayList<>(shuffledDataset.subList(warmupSize, shuffledDataset.size()));
 
-        log.info("Dataset split: warmup={} ({:.0f}%), test={} ({:.0f}%)",
-                warmupSet.size(), warmupRatio * 100,
-                testSet.size(), (1 - warmupRatio) * 100);
+        log.info("Dataset split: warmup={} ({}%), test={} ({}%)",
+                warmupSet.size(), String.format(java.util.Locale.US, "%.0f", warmupRatio * 100),
+                testSet.size(), String.format(java.util.Locale.US, "%.0f", (1 - warmupRatio) * 100));
 
         return new DatasetSplit(warmupSet, testSet);
     }
@@ -176,7 +176,7 @@ public class DatasetLoader {
                     String query = extractStringField(entry, "query", "question");
                     String answer = extractStringField(entry, "answer", "response");
 
-                    if (query.isEmpty() || query.equals("null")) {
+                    if (query.isEmpty()) {
                         log.warn("Skipping record at line {}: missing or null query field", lineNumber);
                         continue;
                     }
@@ -220,11 +220,8 @@ public class DatasetLoader {
         try {
             MessageDigest digest = MessageDigest.getInstance("SHA-256");
             byte[] bytes = Files.readAllBytes(filePath);
-            byte[] hash = digest.digest(bytes);
-            StringBuilder hex = new StringBuilder();
-            for (byte b : hash)
-                hex.append(String.format("%02x", b));
-            return hex.substring(0, 16) + "…"; // Truncated for log brevity
+            byte[] hash  = digest.digest(bytes);
+            return java.util.HexFormat.of().formatHex(hash); // Full 256-bit hash for reproducibility verification
         } catch (Exception e) {
             log.warn("Could not compute SHA-256 for {}: {}", filePath, e.getMessage());
             return "unavailable";

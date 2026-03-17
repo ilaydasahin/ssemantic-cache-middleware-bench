@@ -5,7 +5,6 @@ import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
 
 import java.util.*;
-import java.util.stream.Collectors;
 
 /**
  * Computes and aggregates all quantitative metrics reported in the experimental
@@ -82,41 +81,48 @@ public class MetricsCollector {
                     "MetricsCollector.compute() called with zero observations");
         }
 
-        int    totalQueries  = observations.size();
-        int    cacheHits     = (int) observations.stream().filter(Observation::hit).count();
-        int    cacheMisses   = totalQueries - cacheHits;
+        // Single pass over observations — collect all accumulators at once
+        int    totalQueries      = observations.size();
+        int    cacheHits         = 0;
+        long   sumEmbeddingMs    = 0L;
+        long   sumLlmMs          = 0L;
+        int    missCount         = 0;
+        double totalActualCost   = 0.0;
+        double totalBaselineCost = 0.0;
+        List<Long> allLatencies  = new ArrayList<>(totalQueries);
+
+        for (Observation o : observations) {
+            allLatencies.add(o.totalLatencyMs());
+            sumEmbeddingMs    += o.embeddingLatencyMs();
+            totalActualCost   += o.actualCost();
+            totalBaselineCost += o.baselineCost();
+            if (o.hit()) {
+                cacheHits++;
+            } else {
+                sumLlmMs += o.llmLatencyMs();
+                missCount++;
+            }
+        }
+
+        int cacheMisses = totalQueries - cacheHits;
 
         // Hit rate: fraction of queries answered from cache (expressed as 0–100 %)
         double hitRate = (double) cacheHits / totalQueries * 100.0;
 
         // Latency percentiles over ALL queries (hit + miss), sorted ascending
-        List<Long> sortedLatencies = observations.stream()
-                .map(Observation::totalLatencyMs)
-                .sorted()
-                .collect(Collectors.toList());
-
-        double p50 = nearestRankPercentile(sortedLatencies, 50);
-        double p95 = nearestRankPercentile(sortedLatencies, 95);
-        double p99 = nearestRankPercentile(sortedLatencies, 99);
+        allLatencies.sort(null);
+        double p50 = nearestRankPercentile(allLatencies, 50);
+        double p95 = nearestRankPercentile(allLatencies, 95);
+        double p99 = nearestRankPercentile(allLatencies, 99);
 
         // Mean embedding latency — averaged across all queries (hit + miss)
-        double avgEmbeddingLatencyMs = observations.stream()
-                .mapToLong(Observation::embeddingLatencyMs)
-                .average()
-                .orElse(0.0);
+        double avgEmbeddingLatencyMs = (double) sumEmbeddingMs / totalQueries;
 
         // Mean LLM latency — averaged over MISS queries only
-        // (hit queries incur zero LLM cost; including them would dilute the metric)
-        OptionalDouble avgLlmOpt = observations.stream()
-                .filter(o -> !o.hit())
-                .mapToLong(Observation::llmLatencyMs)
-                .average();
-        double avgLlmLatencyMs = avgLlmOpt.isPresent() ? avgLlmOpt.getAsDouble() : 0.0;
+        double avgLlmLatencyMs = missCount > 0 ? (double) sumLlmMs / missCount : 0.0;
 
         // Cost savings: percentage reduction in API spend vs. all-miss baseline
         // Formula: savings% = (baseline_total - actual_total) / baseline_total × 100
-        double totalActualCost   = observations.stream().mapToDouble(Observation::actualCost).sum();
-        double totalBaselineCost = observations.stream().mapToDouble(Observation::baselineCost).sum();
         double costSavingsPercent = totalBaselineCost > 0
                 ? (totalBaselineCost - totalActualCost) / totalBaselineCost * 100.0
                 : 0.0;
@@ -130,10 +136,12 @@ public class MetricsCollector {
                 avgEmbeddingLatencyMs, avgLlmLatencyMs,
                 costSavingsPercent, memoryUsageMb);
 
-        log.info("Metrics computed: hitRate={:.1f}%, p50={}ms, p99={}ms, " +
-                 "costSavings={:.1f}%, memory={:.1f}MB",
-                result.hitRate(), result.p50LatencyMs(), result.p99LatencyMs(),
-                result.costSavingsPercent(), result.memoryUsageMb());
+        log.info("Metrics computed: hitRate={}%, p50={}ms, p99={}ms, costSavings={}%, memory={}MB",
+                String.format(java.util.Locale.US, "%.1f", result.hitRate()),
+                result.p50LatencyMs(),
+                result.p99LatencyMs(),
+                String.format(java.util.Locale.US, "%.1f", result.costSavingsPercent()),
+                String.format(java.util.Locale.US, "%.1f", result.memoryUsageMb()));
 
         return result;
     }
@@ -158,10 +166,10 @@ public class MetricsCollector {
      * @param percentile   Target percentile in [1, 100]
      * @return The corresponding percentile value, or 0 if the list is empty
      */
-    static double nearestRankPercentile(List<Long> sortedValues, int percentile) {
+    static double nearestRankPercentile(List<Long> sortedValues, double percentile) {
         if (sortedValues.isEmpty()) return 0.0;
-        int n     = sortedValues.size();
-        int index = (int) Math.ceil(percentile / 100.0 * n) - 1;
+        int n       = sortedValues.size();
+        int index   = (int) Math.ceil(percentile / 100.0 * n) - 1;
         int clamped = Math.max(0, Math.min(index, n - 1));
         return sortedValues.get(clamped);
     }

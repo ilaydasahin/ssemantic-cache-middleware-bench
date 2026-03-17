@@ -56,6 +56,7 @@ public class EvictionStressTestRunner {
         log.info("Commencing strict sequential injection of {} records to trigger eviction...", testCount);
 
         List<Long> insertLatenciesNs = new ArrayList<>(testCount);
+        long sumNs    = 0L;
         long startTime = System.nanoTime();
 
         for (int i = 0; i < testCount; i++) {
@@ -65,9 +66,10 @@ public class EvictionStressTestRunner {
 
             long startOp = System.nanoTime();
             cacheService.store(q, v, a);
-            long endOp = System.nanoTime();
+            long elapsed = System.nanoTime() - startOp;
 
-            insertLatenciesNs.add(endOp - startOp);
+            insertLatenciesNs.add(elapsed);
+            sumNs += elapsed;
 
             // Brief pause to allow background threads to interleave naturally
             if (i % 100 == 0) {
@@ -77,14 +79,17 @@ public class EvictionStressTestRunner {
         long totalTimeMs = (System.nanoTime() - startTime) / 1_000_000;
 
         Collections.sort(insertLatenciesNs);
-        double avgNs = insertLatenciesNs.stream().mapToLong(l -> l).average().orElse(0.0);
-        long p50Ns = insertLatenciesNs.get(insertLatenciesNs.size() / 2);
-        long p99Ns = insertLatenciesNs.get((int) (insertLatenciesNs.size() * 0.99));
-        long p999Ns = insertLatenciesNs.get((int) (insertLatenciesNs.size() * 0.999));
+        double avgNs = (double) sumNs / testCount;
+        long p50Ns  = (long) MetricsCollector.nearestRankPercentile(insertLatenciesNs, 50.0);
+        long p99Ns  = (long) MetricsCollector.nearestRankPercentile(insertLatenciesNs, 99.0);
+        long p999Ns = (long) MetricsCollector.nearestRankPercentile(insertLatenciesNs, 99.9);
 
         log.info("Eviction Stress Test Complete in {}ms", totalTimeMs);
-        log.info("Insertion Latency (ms): Avg={:.3f}, p50={:.3f}, p99={:.3f}, p99.9={:.3f}",
-                avgNs / 1_000_000.0, p50Ns / 1_000_000.0, p99Ns / 1_000_000.0, p999Ns / 1_000_000.0);
+        log.info("Insertion Latency (ms): Avg={}, p50={}, p99={}, p99.9={}",
+                String.format(java.util.Locale.US, "%.3f", avgNs / 1_000_000.0),
+                String.format(java.util.Locale.US, "%.3f", p50Ns / 1_000_000.0),
+                String.format(java.util.Locale.US, "%.3f", p99Ns / 1_000_000.0),
+                String.format(java.util.Locale.US, "%.3f", p999Ns / 1_000_000.0));
 
         StressResult result = new StressResult(
                 testCount,
@@ -96,8 +101,10 @@ public class EvictionStressTestRunner {
 
         if (outputFile != null) {
             File f = new File(outputFile);
-            if (f.getParentFile() != null)
-                f.getParentFile().mkdirs();
+            File parent = f.getParentFile();
+            if (parent != null && !parent.exists() && !parent.mkdirs()) {
+                log.warn("Could not create output directory: {}", parent);
+            }
             objectMapper.writeValue(f, result);
             log.info("Saved stress test results to {}", outputFile);
         }

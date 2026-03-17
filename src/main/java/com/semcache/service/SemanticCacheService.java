@@ -51,10 +51,6 @@ public class SemanticCacheService {
     // L1 Tier: O(1) Exact Match Map (normalizedQuery -> entryId)
     private final Map<String, String> queryToIdMap = new ConcurrentHashMap<>(); // Changed to ConcurrentHashMap
 
-    // LRU Tier: O(1) Eviction Tracker
-    // Changed to ConcurrentHashMap, LRU logic handled explicitly
-    private final Map<String, Boolean> lruTracker = new ConcurrentHashMap<>();
-
     // Background Eviction Daemon (M.6 Gold Standard)
     private final ScheduledExecutorService evictionScheduler = Executors.newSingleThreadScheduledExecutor();
     private final AtomicBoolean isEvicting = new AtomicBoolean(false);
@@ -143,9 +139,9 @@ public class SemanticCacheService {
 
     /**
      * Store a query-response pair in the cache.
-     * 
+     *
      * Algorithm 1, Line 10: Store(q, v_q, r)
-     * Performs atomic update of L1, L2, and LRU trackers.
+     * Performs atomic update of L1 and L2 stores.
      */
     public void store(String query, float[] embedding, String response) {
         lock.writeLock().lock();
@@ -180,10 +176,6 @@ public class SemanticCacheService {
             cacheStore.put(id, entry);
             // Fix #1: Populate L1 exact-match map so identical queries get O(1) lookup
             queryToIdMap.put(normalizeQuery(query), id);
-            // Atomic tracking update
-            synchronized (lruTracker) {
-                lruTracker.put(id, true);
-            }
 
             // Also store in Local Vector Index for standalone ANN benchmark
             localVectorIndex.add(id, embedding, query, response);
@@ -208,7 +200,6 @@ public class SemanticCacheService {
         try {
             cacheStore.clear();
             queryToIdMap.clear();
-            lruTracker.clear();
             localVectorIndex.clear();
             // Critical: also clear Redis vectorset to prevent cross-run vector
             // contamination
@@ -226,14 +217,16 @@ public class SemanticCacheService {
      */
     public Map<String, Object> getStats() {
         Map<String, Object> stats = new LinkedHashMap<>();
+        double hits  = cacheHitCounter.count();
+        double misses = cacheMissCounter.count();
+        double total  = hits + misses;
         stats.put("size", cacheStore.size());
         stats.put("maxEntries", cacheProperties.getMaxEntries());
         stats.put("strategy", getStrategy());
         stats.put("threshold", getSimilarityThreshold());
-        stats.put("hits", cacheHitCounter.count());
-        stats.put("misses", cacheMissCounter.count());
-        double total = cacheHitCounter.count() + cacheMissCounter.count();
-        stats.put("hitRate", total > 0 ? cacheHitCounter.count() / total : 0.0);
+        stats.put("hits", hits);
+        stats.put("misses", misses);
+        stats.put("hitRate", total > 0 ? hits / total : 0.0);
         return stats;
     }
 
@@ -257,6 +250,10 @@ public class SemanticCacheService {
         return query.toLowerCase().trim();
     }
 
+    private boolean isExpired(CacheEntry entry) {
+        return System.currentTimeMillis() - entry.timestamp() > cacheProperties.getTtlSeconds() * 1000L;
+    }
+
     /**
      * Semantic lookup using embedding similarity (L2 Tier).
      * Implements Algorithm 1, Lines 1-13.
@@ -271,8 +268,7 @@ public class SemanticCacheService {
             String existingId = queryToIdMap.get(qNorm);
             if (existingId != null) {
                 CacheEntry entry = cacheStore.get(existingId);
-                if (entry != null && (System.currentTimeMillis() - entry.timestamp()) <= cacheProperties.getTtlSeconds()
-                        * 1000L) {
+                if (entry != null && !isExpired(entry)) {
                     cacheHitCounter.increment();
                     updateLruOrder(existingId);
                     return CacheLookupResult.hit(entry.response(), 1.0, 0, 0, entry.queryText(), entry.embedding());
@@ -404,9 +400,10 @@ public class SemanticCacheService {
     }
 
     private CacheLookupResult bruteForceLookup(float[] queryVec, long lookupStart, long embeddingTimeMs) {
+        long now = System.currentTimeMillis();
+        long ttlMs = cacheProperties.getTtlSeconds() * 1000L;
         var bestResult = cacheStore.values().parallelStream()
-                .filter(entry -> (System.currentTimeMillis() - entry.timestamp()) <= cacheProperties.getTtlSeconds()
-                        * 1000L)
+                .filter(entry -> now - entry.timestamp() <= ttlMs)
                 .map(entry -> new KnnResult(entry, embeddingService.cosineSimilarity(queryVec, entry.embedding())))
                 .max(Comparator.comparingDouble(r -> r.similarity));
 
@@ -438,8 +435,7 @@ public class SemanticCacheService {
 
             if (id != null) {
                 CacheEntry entry = cacheStore.get(id);
-                if (entry != null && (System.currentTimeMillis() - entry.timestamp()) <= cacheProperties.getTtlSeconds()
-                        * 1000L) {
+                if (entry != null && !isExpired(entry)) {
                     cacheHitCounter.increment();
                     updateLruOrder(id); // Fixed concurrency reordering
                     long lookupTimeMs = (System.nanoTime() - start) / 1_000_000;
@@ -492,16 +488,7 @@ public class SemanticCacheService {
     }
 
     private void updateLruOrder(String id) {
-        // Fix 1: LinkedHashMap.get() with accessOrder=true IS a write operation.
-        // We must synchronize access to the tracker because ReadLock doesn't protect
-        // against mutations.
-        synchronized (lruTracker) {
-            lruTracker.get(id);
-        }
-
-        // Fix 2 (Semantic-Aware Eviction prep): Update hit count to track frequency
-        // (LFU)
-        // thread-safe atomic update for ConcurrentHashMap
+        // Eviction policy is LFU (Least Frequently Used), tracked via hitCount in CacheEntry.
         cacheStore.computeIfPresent(id, (k, v) -> v.withIncrementedHitCount());
     }
 
@@ -526,24 +513,20 @@ public class SemanticCacheService {
                     currentSize, capacity, targetEvictionCount);
 
             List<String> victims = new ArrayList<>();
-            synchronized (lruTracker) {
-                int sampleSize = Math.min(targetEvictionCount * 3, lruTracker.size());
-                if (sampleSize == 0)
-                    return;
+            int sampleSize = Math.min(targetEvictionCount * 3, cacheStore.size());
+            if (sampleSize == 0)
+                return;
 
-                Iterator<String> it = lruTracker.keySet().iterator();
-                List<CacheEntry> candidates = new ArrayList<>();
-                for (int i = 0; i < sampleSize && it.hasNext(); i++) {
-                    CacheEntry e = cacheStore.get(it.next());
-                    if (e != null)
-                        candidates.add(e);
-                }
+            Iterator<CacheEntry> it = cacheStore.values().iterator();
+            List<CacheEntry> candidates = new ArrayList<>(sampleSize);
+            for (int i = 0; i < sampleSize && it.hasNext(); i++) {
+                candidates.add(it.next());
+            }
 
-                candidates.sort(Comparator.comparingInt(CacheEntry::hitCount));
+            candidates.sort(Comparator.comparingInt(CacheEntry::hitCount));
 
-                for (int i = 0; i < Math.min(targetEvictionCount, candidates.size()); i++) {
-                    victims.add(candidates.get(i).id());
-                }
+            for (int i = 0; i < Math.min(targetEvictionCount, candidates.size()); i++) {
+                victims.add(candidates.get(i).id());
             }
 
             // M.6 Gold Standard Fix (Small-Batching):
@@ -558,7 +541,6 @@ public class SemanticCacheService {
                 lock.writeLock().lock();
                 try {
                     for (String victimId : currentBatch) {
-                        lruTracker.remove(victimId);
                         CacheEntry entry = cacheStore.remove(victimId);
                         if (entry != null) {
                             queryToIdMap.remove(normalizeQuery(entry.queryText()));

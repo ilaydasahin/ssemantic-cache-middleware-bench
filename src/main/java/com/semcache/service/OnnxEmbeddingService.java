@@ -42,6 +42,13 @@ public class OnnxEmbeddingService implements EmbeddingService {
         String name;
     }
 
+    private record ModelSpec(String dir, int dim, int maxLen) {}
+
+    private static final Map<String, ModelSpec> MODEL_SPECS = Map.of(
+            "minilm",   new ModelSpec("all-MiniLM-L6-v2",          384, 128),
+            "mpnet",    new ModelSpec("all-mpnet-base-v2",          768, 384),
+            "tinybert", new ModelSpec("paraphrase-TinyBERT-L6-v2", 312, 128));
+
     private final Map<String, ModelContext> modelRegistry = new HashMap<>();
 
     public OnnxEmbeddingService(MeterRegistry meterRegistry) {
@@ -68,36 +75,19 @@ public class OnnxEmbeddingService implements EmbeddingService {
     }
 
     private void tryLoadModel(String name) {
-        String fullModelDir = switch (name) {
-            case "mpnet" -> "all-mpnet-base-v2";
-            case "tinybert" -> "paraphrase-TinyBERT-L6-v2";
-            default -> "all-MiniLM-L6-v2";
-        };
+        // T2 fix: per-model architecture parameters consolidated in MODEL_SPECS
+        ModelSpec spec = MODEL_SPECS.getOrDefault(name, MODEL_SPECS.get("minilm"));
 
-        int dim = switch (name) {
-            case "mpnet" -> 768;
-            case "tinybert" -> 312;
-            default -> 384;
-        };
-
-        // T2 fix: per-model max-sequence-length (matches actual model architecture)
-        // MiniLM/TinyBERT: 128 is their practical optimum; MPNet: supports up to 384
-        int modelMaxLength = switch (name) {
-            case "mpnet" -> 384;
-            case "tinybert" -> 128;
-            default -> 128; // minilm
-        };
-
-        String modelPath = "models/" + fullModelDir + "/model.onnx";
-        String vocabPath = "models/" + fullModelDir + "/vocab.txt";
+        String modelPath = "models/" + spec.dir() + "/model.onnx";
+        String vocabPath = "models/" + spec.dir() + "/vocab.txt";
 
         File modelFile = new File(modelPath);
         if (modelFile.exists()) {
             try {
                 ModelContext ctx = new ModelContext();
                 ctx.name = name;
-                ctx.dimension = dim;
-                ctx.maxLength = modelMaxLength; // T2: per-model length
+                ctx.dimension = spec.dim();
+                ctx.maxLength = spec.maxLen(); // T2: per-model length
                 ctx.session = env.createSession(modelPath, new OrtSession.SessionOptions());
                 ctx.tokenizer = new SimpleWordPieceTokenizer(vocabPath);
                 ctx.timer = Timer.builder("embedding.latency")
@@ -106,7 +96,7 @@ public class OnnxEmbeddingService implements EmbeddingService {
                         .register(meterRegistry);
 
                 modelRegistry.put(name, ctx);
-                log.info("Loaded model context: {} ({}d, maxLen={})", name, dim, modelMaxLength);
+                log.info("Loaded model context: {} ({}d, maxLen={})", name, spec.dim(), spec.maxLen());
             } catch (Exception e) {
                 log.warn("Failed to load model {}: {}", name, e.getMessage());
             }
@@ -122,6 +112,10 @@ public class OnnxEmbeddingService implements EmbeddingService {
     public float[] encode(String text, String modelName) {
         ModelContext ctx = modelRegistry.get(modelName.toLowerCase());
         if (ctx == null) {
+            if (modelRegistry.isEmpty()) {
+                throw new RuntimeException(
+                        "No ONNX models loaded. Check that model files exist under models/. Requested: " + modelName);
+            }
             log.error("Model not found in registry: {}. Defaulting to first available.", modelName);
             ctx = modelRegistry.values().iterator().next();
         }
@@ -163,9 +157,9 @@ public class OnnxEmbeddingService implements EmbeddingService {
             List<Integer> tokenIds = ctx.tokenizer.tokenize(text, seqLen);
             long[] inputIds = tokenIds.stream().mapToLong(i -> i).toArray();
             long[] attentionMask = new long[seqLen];
-
+            int tokenCount = tokenIds.size();
             for (int i = 0; i < seqLen; i++) {
-                attentionMask[i] = (i < tokenIds.size() && tokenIds.get(i) != 0) ? 1L : 0L;
+                attentionMask[i] = (i < tokenCount && tokenIds.get(i) != 0) ? 1L : 0L;
             }
 
             long[] shape = { 1, seqLen };
@@ -218,6 +212,6 @@ public class OnnxEmbeddingService implements EmbeddingService {
         n = Math.sqrt(n);
         if (n > 0)
             for (int i = 0; i < v.length; i++)
-                v[i] /= (float) n;
+                v[i] = (float)(v[i] / n); // divide in double precision, then cast
     }
 }

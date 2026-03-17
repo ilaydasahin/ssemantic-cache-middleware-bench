@@ -2,6 +2,7 @@ package com.semcache.benchmark;
 
 import org.springframework.stereotype.Component;
 import java.util.Random;
+import java.util.regex.Pattern;
 
 /**
  * Generates synthetic noise (typos, swaps) to test adversarial robustness.
@@ -11,6 +12,8 @@ import java.util.Random;
 @Component
 public class NoiseGenerator {
 
+    private static final Pattern WHITESPACE = Pattern.compile("\\s+");
+
     /**
      * Injects noise into the input text with a given probability.
      */
@@ -19,7 +22,10 @@ public class NoiseGenerator {
             return text;
         }
 
-        Random seededRandom = new Random(seed);
+        // XOR experiment seed with query hash so each query gets an independent but
+        // still reproducible random stream. Without this, every query would receive
+        // the same noise pattern, violating statistical independence.
+        Random seededRandom = new Random(seed ^ (long) text.hashCode());
         if (seededRandom.nextDouble() > probability) {
             return text;
         }
@@ -45,7 +51,7 @@ public class NoiseGenerator {
     }
 
     private String injectSwap(String text, Random rand) {
-        String[] words = text.split("\\s+");
+        String[] words = WHITESPACE.split(text);
         if (words.length < 3)
             return text;
 
@@ -58,7 +64,7 @@ public class NoiseGenerator {
     }
 
     private String injectDuplication(String text, Random rand) {
-        String[] words = text.split("\\s+");
+        String[] words = WHITESPACE.split(text);
         int pos = rand.nextInt(words.length);
 
         StringBuilder sb = new StringBuilder();

@@ -285,9 +285,25 @@ public class BenchmarkRunner {
         List<Integer> queryIndices = new ArrayList<>();
         if (zipfianSkew > 0.01) {
             log.info("Generating Zipfian query sequence (skew={})", zipfianSkew);
+            // Precompute weights then build CDF for O(N log N) total vs O(N²) linear scan
+            double[] weights = new double[testSize];
+            double normConst = 0.0;
+            for (int i = 0; i < testSize; i++) {
+                weights[i] = 1.0 / Math.pow(i + 1, zipfianSkew);
+                normConst += weights[i];
+            }
+            double[] cdf = new double[testSize];
+            double cumSum = 0.0;
+            for (int i = 0; i < testSize; i++) {
+                cumSum += weights[i] / normConst;
+                cdf[i] = cumSum;
+            }
             Random rand = new Random(config.randomSeed());
             for (int i = 0; i < testSize; i++) {
-                queryIndices.add(generateZipfianIndex(testSize, zipfianSkew, rand));
+                double p = rand.nextDouble();
+                int idx = java.util.Arrays.binarySearch(cdf, p);
+                if (idx < 0) idx = -(idx + 1);
+                queryIndices.add(Math.min(idx, testSize - 1));
             }
         } else {
             // Uniform distribution (default)
@@ -296,6 +312,7 @@ public class BenchmarkRunner {
         }
 
         // TURBO MODE: Parallel processing of the test set across all available LLM keys.
+        java.util.concurrent.atomic.AtomicInteger progressCounter = new java.util.concurrent.atomic.AtomicInteger(0);
         queryIndices.parallelStream().forEach(index -> {
             DatasetRecord record = testSet.get(index);
             long wallClockStart = System.nanoTime();
@@ -310,14 +327,12 @@ public class BenchmarkRunner {
             }
 
             CacheLookupResult lookupResult = cacheService.lookup(testQuery);
-            String response;
-            long llmLatencyMs = 0L;
 
             if (lookupResult.hit()) {
                 // ──── CACHE HIT path ──────────────────────────────────────────────
                 // The cache returned a response that satisfied similarity threshold θ.
                 // No LLM call required; total cost = 0.
-                response = lookupResult.response();
+                String response = lookupResult.response();
 
                 long totalMs = (System.nanoTime() - wallClockStart) / 1_000_000;
                 metricsCollector.record(
@@ -339,8 +354,8 @@ public class BenchmarkRunner {
 
                 // M.6 Fix: Even if testQuery is a paraphrase, we generate the answer
                 // based on testQuery but ensure the cost is estimated fairly.
-                response = llmService.generateSync(testQuery);
-                llmLatencyMs = (System.nanoTime() - llmStart) / 1_000_000;
+                String response = llmService.generateSync(testQuery);
+                long llmLatencyMs = (System.nanoTime() - llmStart) / 1_000_000;
 
                 // Reuse the embedding computed during lookup to avoid redundant ONNX call
                 float[] embedding = lookupResult.queryEmbedding() != null
@@ -365,32 +380,14 @@ public class BenchmarkRunner {
                         totalMs, lookupResult.embeddingTimeMs(), llmLatencyMs));
             }
 
-            if (queryLogs.size() % 100 == 0) {
-                log.info("Progress: {}/{} queries processed...", queryLogs.size(), testSize);
+            int done = progressCounter.incrementAndGet();
+            if (done % 100 == 0) {
+                log.info("Progress: {}/{} queries processed...", done, testSize);
             }
         });
 
         log.info("Test phase complete: {} queries processed", testSet.size());
         return queryLogs;
-    }
-
-    /**
-     * Generates a Zipfian distributed index in range [0, n-1].
-     * P(i) = (1/i^s) / sum(1/j^s)
-     */
-    private int generateZipfianIndex(int n, double skew, Random rand) {
-        double cp = 0.0;
-        for (int i = 1; i <= n; i++)
-            cp += 1.0 / Math.pow(i, skew);
-
-        double target = rand.nextDouble() * cp;
-        double sum = 0.0;
-        for (int i = 1; i <= n; i++) {
-            sum += 1.0 / Math.pow(i, skew);
-            if (target <= sum)
-                return i - 1;
-        }
-        return n - 1;
     }
 
     // ─────────────────────────────────────────────────────────────────────────

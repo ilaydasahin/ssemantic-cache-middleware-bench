@@ -51,19 +51,13 @@ public class ThroughputBenchmarkRunner {
         // 1. Prepare fixed cache state (pool of entries) for stable measurement
         cacheService.clearCache();
         int poolSize = Math.min(5000, dataset.size());
-        java.util.List<String> warmupQueries = new java.util.ArrayList<>(poolSize);
-        java.util.List<String> warmupAnswers = new java.util.ArrayList<>(poolSize);
-        for (int i = 0; i < poolSize; i++) {
-            warmupQueries.add(dataset.get(i).query());
-            warmupAnswers.add(dataset.get(i).answer());
-        }
 
         log.info("Warming up cache with {} encoded REAL records...", poolSize);
         long startWarmup = System.nanoTime();
         for (int i = 0; i < poolSize; i++) {
-            String q = warmupQueries.get(i);
+            String q = dataset.get(i).query();
             float[] vec = embeddingService.encode(q);
-            cacheService.store(q, vec, warmupAnswers.get(i));
+            cacheService.store(q, vec, dataset.get(i).answer());
         }
         log.info("Warmup complete in {}ms", (System.nanoTime() - startWarmup) / 1_000_000);
 
@@ -74,7 +68,7 @@ public class ThroughputBenchmarkRunner {
 
         log.info("Generating {} test requests following Zipfian distribution (s={}) over {} pool...",
                 totalRequests, zipfExponent, poolSize);
-        List<String> testQueries = generateZipfianTestQueries(warmupQueries, totalRequests, zipfExponent);
+        List<String> testQueries = generateZipfianTestQueries(dataset.subList(0, poolSize), totalRequests, zipfExponent);
 
         // 3. Run load test
         ThroughputResult result = runLoadTest(concurrentUsers, testQueries);
@@ -88,8 +82,10 @@ public class ThroughputBenchmarkRunner {
         // 4. Save result to JSON if output file specified
         if (outputFile != null) {
             File f = new File(outputFile);
-            if (f.getParentFile() != null)
-                f.getParentFile().mkdirs();
+            File parent = f.getParentFile();
+            if (parent != null && !parent.exists() && !parent.mkdirs()) {
+                log.warn("Could not create output directory: {}", parent);
+            }
             objectMapper.writeValue(f, result);
             log.info("Throughput result saved to: {}", outputFile);
         }
@@ -100,7 +96,7 @@ public class ThroughputBenchmarkRunner {
         int totalRequests = queries.size();
 
         Queue<Long> latenciesNs = new ConcurrentLinkedQueue<>();
-        AtomicInteger completed = new AtomicInteger(0);
+        AtomicInteger nextQueryIndex = new AtomicInteger(0);
 
         long start = System.nanoTime();
 
@@ -108,7 +104,7 @@ public class ThroughputBenchmarkRunner {
         for (int i = 0; i < concurrency; i++) {
             futures.add(CompletableFuture.runAsync(() -> {
                 while (true) {
-                    int reqIndex = completed.getAndIncrement();
+                    int reqIndex = nextQueryIndex.getAndIncrement();
                     if (reqIndex >= totalRequests)
                         break;
 
@@ -133,9 +129,10 @@ public class ThroughputBenchmarkRunner {
         List<Long> latenciesSorted = new ArrayList<>(latenciesNs);
         Collections.sort(latenciesSorted);
 
-        double avgLatencyNs = latenciesSorted.stream().mapToLong(l -> l).average().orElse(0.0);
-        long p99Ns = latenciesSorted.isEmpty() ? 0
-                : latenciesSorted.get(Math.max(0, (int) (latenciesSorted.size() * 0.99) - 1));
+        long sumNs = 0L;
+        for (long v : latenciesSorted) sumNs += v;
+        double avgLatencyNs = latenciesSorted.isEmpty() ? 0.0 : (double) sumNs / latenciesSorted.size();
+        long p99Ns = (long) MetricsCollector.nearestRankPercentile(latenciesSorted, 99);
 
         return new ThroughputResult(concurrency, totalRequests, rps, avgLatencyNs / 1_000_000.0, p99Ns / 1_000_000);
     }
@@ -146,22 +143,26 @@ public class ThroughputBenchmarkRunner {
      * Prevents uniform-random caching artifacts by modeling realistic power-law
      * traffic.
      */
-    private List<String> generateZipfianTestQueries(List<String> pool, int numRequests, double s) {
+    private List<String> generateZipfianTestQueries(
+            List<com.semcache.benchmark.DatasetLoader.DatasetRecord> pool, int numRequests, double s) {
         int poolSize = pool.size();
-        List<String> queries = new ArrayList<>(numRequests);
-        double c = 0;
-        for (int i = 1; i <= poolSize; i++) {
-            c += (1.0 / Math.pow(i, s));
+
+        // Compute power weights once; reuse for both normalization and CDF construction
+        double[] weights = new double[poolSize];
+        double total = 0;
+        for (int i = 0; i < poolSize; i++) {
+            weights[i] = 1.0 / Math.pow(i + 1, s);
+            total += weights[i];
         }
-        c = 1.0 / c;
 
         double[] cdf = new double[poolSize];
         double sum = 0;
-        for (int i = 1; i <= poolSize; i++) {
-            sum += c * (1.0 / Math.pow(i, s));
-            cdf[i - 1] = sum;
+        for (int i = 0; i < poolSize; i++) {
+            sum += weights[i] / total;
+            cdf[i] = sum;
         }
 
+        List<String> queries = new ArrayList<>(numRequests);
         Random random = new Random(42); // deterministic
         for (int i = 0; i < numRequests; i++) {
             double p = random.nextDouble();
@@ -169,7 +170,7 @@ public class ThroughputBenchmarkRunner {
             if (index < 0)
                 index = -(index + 1);
             index = Math.min(index, poolSize - 1);
-            queries.add(pool.get(index));
+            queries.add(pool.get(index).query());
         }
         return queries;
     }
