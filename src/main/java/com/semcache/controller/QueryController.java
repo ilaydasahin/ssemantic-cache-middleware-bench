@@ -5,6 +5,8 @@ import com.semcache.model.QueryDtos.*;
 import com.semcache.service.EmbeddingService;
 import com.semcache.service.LLMService;
 import com.semcache.service.SemanticCacheService;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.http.ResponseEntity;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.*;
@@ -23,6 +25,8 @@ import java.util.Map;
 @RestController
 @RequestMapping("/api")
 public class QueryController {
+
+    private static final Logger log = LoggerFactory.getLogger(QueryController.class);
 
     private final SemanticCacheService cacheService;
     private final EmbeddingService embeddingService;
@@ -127,6 +131,7 @@ public class QueryController {
      */
     @ExceptionHandler(Exception.class)
     public ResponseEntity<Map<String, String>> handleExceptions(Exception e) {
+        log.error("Unhandled exception in QueryController", e);
         return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
                 .body(Map.of(
                         "error", "Internal Server Error",

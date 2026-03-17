@@ -169,7 +169,7 @@ public class BenchmarkRunner {
                 embeddingService.getModelName(),
                 threshold, "BIDIRECTIONAL", warmupRatio,
                 seed, sampleSize,
-                true, "SEMANTIC", 5, 50000, 86400L, null, 0.0, 0.0, "/tmp/debug.json");
+                true, "SEMANTIC", 5, 50000, 86400L, null, 0.0, 0.0, null);
         run(cfg);
     }
 

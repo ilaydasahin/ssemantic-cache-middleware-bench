@@ -207,17 +207,26 @@ public class RedisSearchService {
             List<Object> items = (List<Object>) raw;
             // Items: [id, score, attrJson, ...]
             for (int i = 0; i + 2 < items.size(); i += 3) {
-                String id = new String((byte[]) items.get(i));
+                Object rawId    = items.get(i);
+                Object rawScore = items.get(i + 1);
+                Object rawAttr  = items.get(i + 2);
+                if (rawId == null || rawScore == null) {
+                    log.debug("Skipping VSIM response triple at index {}: null id or score", i);
+                    continue;
+                }
+                String id = rawId instanceof byte[] ? new String((byte[]) rawId) : String.valueOf(rawId);
                 double score;
                 try {
-                    score = Double.parseDouble(new String((byte[]) items.get(i + 1)));
+                    String scoreStr = rawScore instanceof byte[]
+                            ? new String((byte[]) rawScore) : String.valueOf(rawScore);
+                    score = Double.parseDouble(scoreStr);
                 } catch (Exception e) {
                     score = 0.0;
                 }
                 // attrJson — parse query and response
-                String attrJson = items.get(i + 2) instanceof byte[]
-                        ? new String((byte[]) items.get(i + 2))
-                        : String.valueOf(items.get(i + 2));
+                String attrJson = rawAttr instanceof byte[]
+                        ? new String((byte[]) rawAttr)
+                        : (rawAttr != null ? String.valueOf(rawAttr) : "{}");
 
                 String query = extractJsonField(attrJson, "query");
                 String response = extractJsonField(attrJson, "response");
@@ -262,6 +271,7 @@ public class RedisSearchService {
      */
     @SuppressWarnings("unchecked")
     private String extractJsonField(String json, String field) {
+        if (json == null || json.isEmpty()) return "";
         try {
             Map<String, Object> map = objectMapper.readValue(json, Map.class);
             Object val = map.get(field);
