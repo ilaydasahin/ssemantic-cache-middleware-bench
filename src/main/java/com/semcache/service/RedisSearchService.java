@@ -1,6 +1,8 @@
 package com.semcache.service;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import io.micrometer.core.instrument.Counter;
+import io.micrometer.core.instrument.MeterRegistry;
 import jakarta.annotation.PostConstruct;
 import jakarta.annotation.PreDestroy;
 import org.slf4j.Logger;
@@ -37,12 +39,21 @@ public class RedisSearchService {
     private int redisPort;
 
     private final ObjectMapper objectMapper = new ObjectMapper();
+    private final MeterRegistry meterRegistry;
     private JedisPooled jedis;
     private boolean available = false;
+
+    // Metrics
+    private Counter storeErrorCounter;
+    private Counter searchErrorCounter;
 
     // We store metadata (query, response) in a separate Hash key alongside the
     // vector
     private static final String VSET_KEY = "semcache:vset";
+
+    public RedisSearchService(MeterRegistry meterRegistry) {
+        this.meterRegistry = meterRegistry;
+    }
 
     @PostConstruct
     public void init() {
@@ -58,6 +69,15 @@ public class RedisSearchService {
             jedis.ping();
             // Test vectorset availability via a probe VADD/DEL
             available = probeVectorset();
+            
+            // Initialize metrics
+            storeErrorCounter = Counter.builder("redis.store.errors")
+                    .description("Redis VADD failures")
+                    .register(meterRegistry);
+            searchErrorCounter = Counter.builder("redis.search.errors")
+                    .description("Redis VSIM failures")
+                    .register(meterRegistry);
+            
             if (available) {
                 log.info("RedisSearchService initialized with Redis 8 native vectorset: {}:{}", redisHost, redisPort);
             } else {
@@ -116,7 +136,8 @@ public class RedisSearchService {
                     "SETATTR".getBytes(),
                     attrJson.getBytes());
         } catch (Exception e) {
-            log.debug("VADD failed for id={}: {}", id, e.getMessage());
+            storeErrorCounter.increment();
+            log.warn("VADD failed for id={}: {}", id, e.getMessage());
         }
     }
 
@@ -168,7 +189,8 @@ public class RedisSearchService {
             return Optional.of(docs);
 
         } catch (Exception e) {
-            log.debug("VSIM search failed: {}", e.getMessage());
+            searchErrorCounter.increment();
+            log.warn("VSIM search failed: {}", e.getMessage());
             return Optional.empty();
         }
     }

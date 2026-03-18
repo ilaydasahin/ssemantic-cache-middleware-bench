@@ -90,6 +90,9 @@ llm:
 # Benchmark Configuration
 # ============================================
 benchmark:
+  # TTL in seconds for cache entries (86400 = 24 hours)
+  ttl-seconds: 86400
+
   # Random seeds for reproducibility (5 independent runs)
   seeds: [42, 123, 456, 789, 1024]
   

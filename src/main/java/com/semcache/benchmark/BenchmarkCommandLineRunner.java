@@ -86,7 +86,7 @@ public class BenchmarkCommandLineRunner implements CommandLineRunner {
                 properties.getStrategy() != null ? properties.getStrategy() : "SEMANTIC",
                 properties.getKnnK() != null ? properties.getKnnK() : 5,
                 properties.getMaxCacheEntries() != null ? properties.getMaxCacheEntries() : 50_000,
-                86400L,
+                properties.getTtlSeconds() != null ? properties.getTtlSeconds() : 86400L,
                 null,
                 zSkew,
                 nProb,

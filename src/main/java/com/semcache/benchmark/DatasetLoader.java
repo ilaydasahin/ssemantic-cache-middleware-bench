@@ -209,19 +209,25 @@ public class DatasetLoader {
     }
 
     /**
-     * Computes the SHA-256 fingerprint of the raw dataset file.
+     * Computes the SHA-256 fingerprint of the raw dataset file using streaming.
      *
      * <p>
      * Purpose: enables reviewers to verify that the exact same data file
      * was used across different experimental runs or between the authors and
-     * independent replicators.
+     * independent replicators. Uses streaming to avoid OOM on large files.
      */
     private String computeSha256(Path filePath) {
         try {
             MessageDigest digest = MessageDigest.getInstance("SHA-256");
-            byte[] bytes = Files.readAllBytes(filePath);
-            byte[] hash  = digest.digest(bytes);
-            return java.util.HexFormat.of().formatHex(hash); // Full 256-bit hash for reproducibility verification
+            try (java.io.InputStream is = Files.newInputStream(filePath)) {
+                byte[] buffer = new byte[8192];
+                int bytesRead;
+                while ((bytesRead = is.read(buffer)) != -1) {
+                    digest.update(buffer, 0, bytesRead);
+                }
+            }
+            byte[] hash = digest.digest();
+            return java.util.HexFormat.of().formatHex(hash);
         } catch (Exception e) {
             log.warn("Could not compute SHA-256 for {}: {}", filePath, e.getMessage());
             return "unavailable";

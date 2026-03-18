@@ -151,28 +151,6 @@ public class BenchmarkRunner {
         resultExporter.export(config, metrics, queryLogs);
     }
 
-    /**
-     * Legacy wrapper retained for backward compatibility with scripts that pass
-     * individual parameters rather than an {@link ExperimentConfig}.
-     *
-     * @deprecated Prefer {@link #run(ExperimentConfig)} with an explicit config
-     *             object.
-     */
-    @Deprecated(since = "2.0", forRemoval = true)
-    public void runSingleBenchmark(String datasetPath,
-            String datasetName,
-            double threshold,
-            int seed,
-            Integer sampleSize) throws Exception {
-        ExperimentConfig cfg = ExperimentConfig.createV2(
-                datasetName, datasetPath,
-                embeddingService.getModelName(),
-                threshold, "BIDIRECTIONAL", warmupRatio,
-                seed, sampleSize,
-                true, "SEMANTIC", 5, 50000, 86400L, null, 0.0, 0.0, null);
-        run(cfg);
-    }
-
     // ─────────────────────────────────────────────────────────────────────────
     // Private — Experiment phase implementations
     // ─────────────────────────────────────────────────────────────────────────
@@ -388,16 +366,5 @@ public class BenchmarkRunner {
 
         log.info("Test phase complete: {} queries processed", testSet.size());
         return queryLogs;
-    }
-
-    // ─────────────────────────────────────────────────────────────────────────
-    // Legacy value types (retained for BenchmarkCommandLineRunner compatibility)
-    // ─────────────────────────────────────────────────────────────────────────
-
-    /** @deprecated Use {@link QueryLog} from {@link ExperimentResultExporter} */
-    @Deprecated(since = "2.0")
-    public record BenchmarkResultWithLogs(
-            com.semcache.model.QueryDtos.BenchmarkResult result,
-            List<QueryLog> logs) {
     }
 }

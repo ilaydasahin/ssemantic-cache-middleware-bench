@@ -21,3 +21,5 @@ data/
 models/
 *.log
 .DS_Store
+.env
+application-local.yml

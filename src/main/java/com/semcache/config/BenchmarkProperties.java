@@ -32,6 +32,7 @@ public class BenchmarkProperties {
     private Double zipfianSkew;
     private Double noiseProbability;
     private Boolean heavyChurn;
+    private Long ttlSeconds;
 
     public Boolean isHeavyChurn() {
         return heavyChurn;
@@ -199,5 +200,13 @@ public class BenchmarkProperties {
 
     public void setNoiseProbability(Double noiseProbability) {
         this.noiseProbability = noiseProbability;
+    }
+
+    public Long getTtlSeconds() {
+        return ttlSeconds;
+    }
+
+    public void setTtlSeconds(Long ttlSeconds) {
+        this.ttlSeconds = ttlSeconds;
     }
 }

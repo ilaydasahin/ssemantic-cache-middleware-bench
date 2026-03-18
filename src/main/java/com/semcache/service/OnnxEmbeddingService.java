@@ -12,6 +12,8 @@ import org.springframework.stereotype.Service;
 import java.nio.LongBuffer;
 import java.util.*;
 import java.io.File;
+import java.util.concurrent.ArrayBlockingQueue;
+import java.util.concurrent.BlockingQueue;
 
 /**
  * Enhanced Embedding Service — Supports multiple concurrent ONNX models.
@@ -34,12 +36,13 @@ public class OnnxEmbeddingService implements EmbeddingService {
     private OrtEnvironment env;
 
     private static class ModelContext {
-        OrtSession session;
+        BlockingQueue<OrtSession> sessionPool;
         SimpleWordPieceTokenizer tokenizer;
         int dimension;
         int maxLength; // T2: per-model max sequence length
         Timer timer;
         String name;
+        int poolSize;
     }
 
     private record ModelSpec(String dir, int dim, int maxLen) {}
@@ -88,15 +91,24 @@ public class OnnxEmbeddingService implements EmbeddingService {
                 ctx.name = name;
                 ctx.dimension = spec.dim();
                 ctx.maxLength = spec.maxLen(); // T2: per-model length
-                ctx.session = env.createSession(modelPath, new OrtSession.SessionOptions());
                 ctx.tokenizer = new SimpleWordPieceTokenizer(vocabPath);
                 ctx.timer = Timer.builder("embedding.latency")
                         .tag("model", name)
                         .description("Time for " + name + " encoding")
                         .register(meterRegistry);
 
+                // Thread-safe session pool: size = available processors
+                ctx.poolSize = Math.max(2, Runtime.getRuntime().availableProcessors());
+                ctx.sessionPool = new ArrayBlockingQueue<>(ctx.poolSize);
+
+                OrtSession.SessionOptions sessionOptions = new OrtSession.SessionOptions();
+                for (int i = 0; i < ctx.poolSize; i++) {
+                    ctx.sessionPool.offer(env.createSession(modelPath, sessionOptions));
+                }
+
                 modelRegistry.put(name, ctx);
-                log.info("Loaded model context: {} ({}d, maxLen={})", name, spec.dim(), spec.maxLen());
+                log.info("Loaded model context: {} ({}d, maxLen={}, poolSize={})", 
+                        name, spec.dim(), spec.maxLen(), ctx.poolSize);
             } catch (Exception e) {
                 log.warn("Failed to load model {}: {}", name, e.getMessage());
             }
@@ -151,7 +163,11 @@ public class OnnxEmbeddingService implements EmbeddingService {
     }
 
     private float[] performInference(String text, ModelContext ctx) {
+        OrtSession session = null;
         try {
+            // Acquire session from pool (blocks if all busy)
+            session = ctx.sessionPool.take();
+
             // T2: use per-model maxLength, fallback to global maxLength
             int seqLen = (ctx.maxLength > 0) ? ctx.maxLength : maxLength;
             List<Integer> tokenIds = ctx.tokenizer.tokenize(text, seqLen);
@@ -170,18 +186,29 @@ public class OnnxEmbeddingService implements EmbeddingService {
                 inputs.put("input_ids", idsTensor);
                 inputs.put("attention_mask", maskTensor);
 
-                if (ctx.session.getInputNames().contains("token_type_ids")) {
+                if (session.getInputNames().contains("token_type_ids")) {
                     long[] ttids = new long[seqLen];
-                    inputs.put("token_type_ids", OnnxTensor.createTensor(env, LongBuffer.wrap(ttids), shape));
-                }
-
-                try (OrtSession.Result results = ctx.session.run(inputs)) {
-                    float[][][] outputData = (float[][][]) results.get(0).getValue();
-                    return meanPooling(outputData[0], attentionMask, ctx.dimension);
+                    try (OnnxTensor ttidsTensor = OnnxTensor.createTensor(env, LongBuffer.wrap(ttids), shape)) {
+                        inputs.put("token_type_ids", ttidsTensor);
+                        try (OrtSession.Result results = session.run(inputs)) {
+                            float[][][] outputData = (float[][][]) results.get(0).getValue();
+                            return meanPooling(outputData[0], attentionMask, ctx.dimension);
+                        }
+                    }
+                } else {
+                    try (OrtSession.Result results = session.run(inputs)) {
+                        float[][][] outputData = (float[][][]) results.get(0).getValue();
+                        return meanPooling(outputData[0], attentionMask, ctx.dimension);
+                    }
                 }
             }
         } catch (Exception e) {
             throw new RuntimeException("Inference failed for " + ctx.name, e);
+        } finally {
+            // Return session to pool
+            if (session != null) {
+                ctx.sessionPool.offer(session);
+            }
         }
     }
 

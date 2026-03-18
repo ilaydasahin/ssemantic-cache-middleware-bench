@@ -1,20 +1,19 @@
 package com.semcache.service;
 
-import org.springframework.stereotype.Component;
-
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.LongAdder;
 
 /**
- * Local Vector Index — A standalone in-memory ANN (Approximate Nearest
- * Neighbor)
- * implementation for scalability benchmarking when RedisSearch is unavailable.
- * 
- * This version uses a simplified index structure to demonstrate the
- * search vs. brute-force tradeoff (M.6).
+ * @deprecated No longer used. The dual-store pattern (LocalVectorIndex +
+ *             SemanticCacheService.cacheStore) caused inconsistency on eviction.
+ *             Brute-force search now runs directly on the single authoritative
+ *             store inside {@link SemanticCacheService} via
+ *             {@link com.semcache.service.strategy.SemanticStrategy}.
+ *             This class is retained only for reference and will be removed in a
+ *             future cleanup.
  */
-@Component
+@Deprecated(since = "2.1", forRemoval = true)
 public class LocalVectorIndex {
 
     private final Map<String, float[]> vectorStore = new ConcurrentHashMap<>();

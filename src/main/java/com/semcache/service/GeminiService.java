@@ -55,10 +55,13 @@ public class GeminiService implements LLMService {
     private Counter keyRotationCounter;
     
     // M.6/M.8 Robustness: Parallel Rate Limiting
-    // We allow up to apiKeys.length concurrent requests, but each key must follow 4.8s spacing.
+    // Free tier: 15 RPM per key, 1500 RPD per key
+    // With 20 keys: 300 RPM total, 30,000 RPD total
     private Semaphore parallelLimiter;
     private final Map<String, java.util.concurrent.atomic.AtomicLong> lastKeyCallTime = new java.util.concurrent.ConcurrentHashMap<>();
-    private static final Duration CALL_SPACING = Duration.ofMillis(4800); // 12.5 RPM (Safe buffer for 15 RPM limit)
+    private final Map<String, java.util.concurrent.atomic.AtomicInteger> keyDailyUsage = new java.util.concurrent.ConcurrentHashMap<>();
+    private static final Duration CALL_SPACING = Duration.ofMillis(4800); // 12.5 RPM (safe buffer for 15 RPM)
+    private static final int DAILY_QUOTA_PER_KEY = 1450; // Safe buffer for 1500 RPD limit
 
     public GeminiService(MeterRegistry meterRegistry) {
         this.meterRegistry = meterRegistry;
@@ -71,13 +74,14 @@ public class GeminiService implements LLMService {
             for (int i = 0; i < apiKeys.length; i++) {
                 apiKeys[i] = apiKeys[i].trim();
                 lastKeyCallTime.put(apiKeys[i], new java.util.concurrent.atomic.AtomicLong(0));
+                keyDailyUsage.put(apiKeys[i], new java.util.concurrent.atomic.AtomicInteger(0));
             }
         } else {
             this.apiKeys = new String[0];
             log.error("No API keys provided in llm.api-keys");
         }
 
-        // Parallel permits = number of keys
+        // Parallel permits = number of keys (20 keys = 20 concurrent requests)
         this.parallelLimiter = new Semaphore(Math.max(1, apiKeys.length));
 
         this.webClient = WebClient.builder()
@@ -101,8 +105,14 @@ public class GeminiService implements LLMService {
                 .description("Number of API key rotations")
                 .register(meterRegistry);
 
-        log.info("GeminiService initialized: model={}, keysLoaded={}, temperature={}, maxTokens={}",
-                model, apiKeys.length, temperature, maxOutputTokens);
+        log.info("GeminiService initialized: model={}, keysLoaded={}, temperature={}, maxTokens={}, totalCapacity={}RPM/{}RPD",
+                model, apiKeys.length, temperature, maxOutputTokens, 
+                apiKeys.length * 15, apiKeys.length * 1500);
+        
+        if (apiKeys.length >= 20) {
+            log.info("✅ Multi-key mode: {} keys detected. Total capacity: ~{}RPM, ~{}RPD (free tier safe)",
+                    apiKeys.length, apiKeys.length * 12, apiKeys.length * 1450);
+        }
     }
 
     /**
@@ -127,7 +137,7 @@ public class GeminiService implements LLMService {
             return Mono.error(new RuntimeException("No API keys available."));
         }
         
-        // Pick a key that has been idle for at least CALL_SPACING
+        // Pick a key that: 1) hasn't hit daily quota, 2) has been idle for CALL_SPACING
         String currentKey = null;
         int keyIndex = -1;
         
@@ -135,18 +145,44 @@ public class GeminiService implements LLMService {
             for (int i = 0; i < apiKeys.length; i++) {
                 int idx = (currentKeyIndex.get() + i) % apiKeys.length;
                 String k = apiKeys[idx];
+                
+                // Check daily quota first
+                int dailyUsage = keyDailyUsage.get(k).get();
+                if (dailyUsage >= DAILY_QUOTA_PER_KEY) {
+                    log.debug("Key {} exhausted daily quota ({}/{}), skipping", 
+                            idx, dailyUsage, DAILY_QUOTA_PER_KEY);
+                    continue;
+                }
+                
+                // Check rate limit (4.8s spacing)
                 long lastCall = lastKeyCallTime.get(k).get();
                 if (System.currentTimeMillis() - lastCall >= CALL_SPACING.toMillis()) {
                     currentKey = k;
                     keyIndex = idx;
                     lastKeyCallTime.get(k).set(System.currentTimeMillis());
+                    keyDailyUsage.get(k).incrementAndGet();
                     break;
                 }
             }
         }
 
-        // If no key is ready, wait for the first one that will be ready
+        // If no key is ready, wait and retry
         if (currentKey == null) {
+            // Check if ALL keys exhausted daily quota
+            boolean allExhausted = keyDailyUsage.values().stream()
+                    .allMatch(usage -> usage.get() >= DAILY_QUOTA_PER_KEY);
+            
+            if (allExhausted) {
+                log.error("ALL {} keys exhausted daily quota ({} calls each). Total: {} calls today.",
+                        apiKeys.length, DAILY_QUOTA_PER_KEY, 
+                        keyDailyUsage.values().stream().mapToInt(java.util.concurrent.atomic.AtomicInteger::get).sum());
+                return Mono.error(new RuntimeException(
+                        "Daily quota exhausted for all " + apiKeys.length + " keys. " +
+                        "Total calls today: " + keyDailyUsage.values().stream()
+                                .mapToInt(java.util.concurrent.atomic.AtomicInteger::get).sum()));
+            }
+            
+            // Otherwise just rate-limited, wait and retry
             return Mono.delay(Duration.ofMillis(500))
                        .flatMap(d -> attemptGenerate(query, attempt));
         }
@@ -161,7 +197,10 @@ public class GeminiService implements LLMService {
                 "generationConfig", Map.of(
                         "temperature", temperature,
                         "maxOutputTokens", maxOutputTokens));
+        
         long start = System.nanoTime();
+        llmCallCounter.increment();
+        
         return webClient.post()
                 .uri(uriBuilder -> uriBuilder
                     .path(model + ":generateContent")
@@ -174,24 +213,44 @@ public class GeminiService implements LLMService {
                 .map(response -> {
                     long durationMs = (System.nanoTime() - start) / 1_000_000;
                     llmTimer.record(Duration.ofMillis(durationMs));
+                    
+                    // Log progress every 100 calls
+                    int totalCalls = keyDailyUsage.values().stream()
+                            .mapToInt(java.util.concurrent.atomic.AtomicInteger::get).sum();
+                    if (totalCalls % 100 == 0) {
+                        log.info("Progress: {} total calls across {} keys (avg {}/key)", 
+                                totalCalls, apiKeys.length, totalCalls / apiKeys.length);
+                    }
+                    
                     return response != null ? response : "No response generated.";
                 })
                 .onErrorResume(e -> {
                     String errorMsg = e.getMessage() != null ? e.getMessage() : "";
+                    
                     // If we hit a rate limit (429) or quota exceeded error
-                    if (errorMsg.contains("429") || errorMsg.toLowerCase().contains("quota")) {
-                        if (attempt < apiKeys.length) {
-                            log.warn("Key index {} (ends in ..{}) hit quota limit. Rotating to next key... (Attempt {}/{})", 
-                                finalKeyIndex, finalKey.substring(Math.max(0, finalKey.length() - 4)), attempt + 1, apiKeys.length);
-                            currentKeyIndex.incrementAndGet();
-                            keyRotationCounter.increment();
+                    if (errorMsg.contains("429") || errorMsg.toLowerCase().contains("quota") || 
+                        errorMsg.toLowerCase().contains("resource_exhausted")) {
+                        
+                        log.warn("Key {} hit quota/rate limit. Usage: {}/{}. Rotating... (Attempt {}/{})", 
+                                finalKeyIndex, keyDailyUsage.get(finalKey).get(), DAILY_QUOTA_PER_KEY,
+                                attempt + 1, apiKeys.length);
+                        
+                        // Mark this key as exhausted
+                        keyDailyUsage.get(finalKey).set(DAILY_QUOTA_PER_KEY);
+                        currentKeyIndex.incrementAndGet();
+                        keyRotationCounter.increment();
+                        
+                        if (attempt < apiKeys.length * 2) { // Allow more retries with multiple keys
                             return attemptGenerate(query, attempt + 1);
                         } else {
-                            log.error("ALL API keys have exhausted their daily quota. Halting.");
-                            return Mono.error(new RuntimeException("Daily quota exhausted for all " + apiKeys.length + " keys."));
+                            log.error("Exhausted all retry attempts across {} keys.", apiKeys.length);
+                            return Mono.error(new RuntimeException(
+                                    "All keys exhausted after " + attempt + " attempts."));
                         }
                     }
+                    
                     llmErrorCounter.increment();
+                    log.error("LLM API error (key {}): {}", finalKeyIndex, errorMsg);
                     return Mono.error(e);
                 });
     }

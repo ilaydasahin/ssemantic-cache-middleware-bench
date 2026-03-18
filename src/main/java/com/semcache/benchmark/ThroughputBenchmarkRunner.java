@@ -95,7 +95,8 @@ public class ThroughputBenchmarkRunner {
         ExecutorService executor = Executors.newFixedThreadPool(concurrency);
         int totalRequests = queries.size();
 
-        Queue<Long> latenciesNs = new ConcurrentLinkedQueue<>();
+        // Use primitive long array instead of ConcurrentLinkedQueue to avoid boxing
+        long[] latenciesNs = new long[totalRequests];
         AtomicInteger nextQueryIndex = new AtomicInteger(0);
 
         long start = System.nanoTime();
@@ -114,7 +115,7 @@ public class ThroughputBenchmarkRunner {
                     cacheService.lookup(query);
                     long qEnd = System.nanoTime();
 
-                    latenciesNs.add(qEnd - actualStart);
+                    latenciesNs[reqIndex] = qEnd - actualStart;
                 }
             }, executor));
         }
@@ -126,13 +127,17 @@ public class ThroughputBenchmarkRunner {
         double totalTimeSec = totalTimeNs / 1_000_000_000.0;
         double rps = totalRequests / totalTimeSec;
 
-        List<Long> latenciesSorted = new ArrayList<>(latenciesNs);
-        Collections.sort(latenciesSorted);
+        // Sort for percentile calculation
+        Arrays.sort(latenciesNs);
 
         long sumNs = 0L;
-        for (long v : latenciesSorted) sumNs += v;
-        double avgLatencyNs = latenciesSorted.isEmpty() ? 0.0 : (double) sumNs / latenciesSorted.size();
-        long p99Ns = (long) MetricsCollector.nearestRankPercentile(latenciesSorted, 99);
+        for (long v : latenciesNs) sumNs += v;
+        double avgLatencyNs = latenciesNs.length > 0 ? (double) sumNs / latenciesNs.length : 0.0;
+        
+        // Convert to List<Long> for percentile calculation
+        List<Long> latenciesList = new ArrayList<>(latenciesNs.length);
+        for (long v : latenciesNs) latenciesList.add(v);
+        long p99Ns = (long) MetricsCollector.nearestRankPercentile(latenciesList, 99);
 
         return new ThroughputResult(concurrency, totalRequests, rps, avgLatencyNs / 1_000_000.0, p99Ns / 1_000_000);
     }

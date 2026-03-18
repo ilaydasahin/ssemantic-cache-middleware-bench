@@ -4,14 +4,16 @@ import java.io.BufferedReader;
 import java.io.FileReader;
 import java.io.IOException;
 import java.util.*;
+import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * A lightweight WordPiece tokenizer implementation for Java.
  * Used to tokenize input text for transformer models (MiniLM, MPNet, TinyBERT).
+ * Thread-safe via ConcurrentHashMap for high-concurrency scenarios.
  */
 public class SimpleWordPieceTokenizer {
 
-    private final Map<String, Integer> vocab = new HashMap<>();
+    private final Map<String, Integer> vocab = new ConcurrentHashMap<>();
     private final int unkTokenId;
     private final int clsTokenId;
     private final int sepTokenId;
