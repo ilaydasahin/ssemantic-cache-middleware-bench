@@ -1,10 +1,10 @@
-# Kullanım Kılavuzu - 20 Key ile Arkaplanda Çalıştırma
+# Kullanım Kılavuzu - 23 Key ile Arkaplanda Çalıştırma (GENİŞLETİLMİŞ KAPASİTE)
 
 ## Hızlı Başlangıç
 
 ### 1. Keyler Hazır ✅
 
-20 Gemini API key'iniz `.env` ve `application-local.yml` dosyalarına kaydedildi.
+23 Gemini API key'iniz `.env` ve `application-local.yml` dosyalarına kaydedildi.
 
 ### 2. Hızlı Test (30 saniye)
 
@@ -14,8 +14,8 @@ bash quick_test.sh
 
 10 sorgu ile sistem testini yapar. Çıktı:
 ```
-✅ Loaded 20 API keys
-📊 Total capacity: ~240 RPM, ~29000 RPD
+✅ Loaded 23 API keys
+📊 Total capacity: ~276 RPM, ~33350 RPD
 🧪 Testing with 10 queries...
 ✅ Test completed!
 ```
@@ -32,8 +32,8 @@ bash run_background.sh
 ║        SEMANTIC CACHE BENCHMARK - BACKGROUND MODE          ║
 ╠════════════════════════════════════════════════════════════╣
 ║  📊 Configuration:                                         ║
-║     • 20 API keys loaded                                   ║
-║     • Capacity: ~240 RPM, ~29,000 RPD                     ║
+║     • 23 API keys loaded (EXTENDED CAPACITY)              ║
+║     • Capacity: ~276 RPM, ~33,350 RPD                     ║
 ║  🎯 Running full benchmark suite...                        ║
 ║     • MS MARCO (10K queries)                              ║
 ║     • Natural Questions (10K queries)                     ║
@@ -56,10 +56,10 @@ bash monitor.sh
 Canlı çıktı:
 ```
 📊 Live progress:
-🔑 Multi-key mode: 20 keys detected. Total capacity: ~240RPM
-📈 Progress: 100 total calls across 20 keys (avg 5/key)
-📈 Progress: 500 total calls across 20 keys (avg 25/key)
-📈 Progress: 1000 total calls across 20 keys (avg 50/key)
+🔑 Multi-key mode: 23 keys detected. Total capacity: ~276RPM
+📈 Progress: 100 total calls across 23 keys (avg 4/key)
+📈 Progress: 500 total calls across 23 keys (avg 22/key)
+📈 Progress: 1000 total calls across 23 keys (avg 43/key)
 ✅ Metrics computed: hitRate=85.2%, p50=12ms, p99=45ms
 ```
 
@@ -122,9 +122,9 @@ kill -9 $(cat logs/benchmark.pid)
 ### Normal Çalışma
 
 ```
-INFO: ✅ Multi-key mode: 20 keys detected
-INFO: Progress: 100 total calls across 20 keys (avg 5/key)
-INFO: Progress: 200 total calls across 20 keys (avg 10/key)
+INFO: ✅ Multi-key mode: 23 keys detected
+INFO: Progress: 100 total calls across 23 keys (avg 4/key)
+INFO: Progress: 200 total calls across 23 keys (avg 9/key)
 ...
 INFO: Metrics computed: hitRate=85%, p50=12ms, p99=45ms
 ```
@@ -133,7 +133,7 @@ INFO: Metrics computed: hitRate=85%, p50=12ms, p99=45ms
 
 ```
 WARN: Key 5 hit quota/rate limit. Usage: 1450/1450. Rotating...
-INFO: Progress: 7500 total calls across 20 keys (avg 375/key)
+INFO: Progress: 7500 total calls across 23 keys (avg 326/key)
 ```
 
 Bu normal! Sistem otomatik olarak sonraki key'e geçer.
@@ -141,8 +141,8 @@ Bu normal! Sistem otomatik olarak sonraki key'e geçer.
 ### Tüm Keyler Tükendi (Günlük Limit)
 
 ```
-ERROR: ALL 20 keys exhausted daily quota (1450 calls each). 
-       Total: 29000 calls today.
+ERROR: ALL 23 keys exhausted daily quota (1450 calls each). 
+       Total: 33350 calls today.
 ```
 
 **Çözüm**: Yarın devam et (kotalar gece yarısı PST'de sıfırlanır)
@@ -155,7 +155,7 @@ ERROR: ALL 20 keys exhausted daily quota (1450 calls each).
 | Küçük deney | 1,000 | 70 dk | 1 key |
 | Orta deney | 5,000 | 90 dk | 4 key |
 | Tam benchmark | 10,000 | 180 dk | 7 key |
-| Maksimum | 29,000 | 500 dk | 20 key |
+| Maksimum | 33,350 | 500 dk | 23 key |
 
 ## Sorun Giderme
 
@@ -185,7 +185,7 @@ kill $(cat logs/benchmark.pid)
 Sistem otomatik halleder. Key rotasyonu yapılır.
 
 ### Yavaş çalışıyor
-Normal! Her key 4.8 saniye bekliyor (rate limit). 20 key ile ~240 RPM hız normal.
+Normal! Her key 4.8 saniye bekliyor (rate limit). 23 key ile ~276 RPM hız normal.
 
 ## İpuçları
 

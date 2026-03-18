@@ -3,7 +3,7 @@
 ## ✅ Sistem Hazır
 
 ### 1. API Key Yönetimi
-- ✅ 20 Gemini API key yüklü
+- ✅ 23 Gemini API key yüklü (EXTENDED CAPACITY)
 - ✅ `.env` dosyasında saklanıyor
 - ✅ `application-local.yml` backup var
 - ✅ `.gitignore` ile korunuyor
@@ -15,8 +15,8 @@ DAILY_QUOTA_PER_KEY = 1450   // Key başına günlük limit
 ```
 
 **Toplam Kapasite:**
-- Dakikalık: 240 istek (20 × 12 RPM)
-- Günlük: 29,000 istek (20 × 1,450 RPD)
+- Dakikalık: 276 istek (23 × 12 RPM)
+- Günlük: 33,350 istek (23 × 1,450 RPD)
 
 ### 3. Hata Yönetimi
 
@@ -28,7 +28,7 @@ WARN: Key 5 hit quota/rate limit. Rotating...
 
 #### Günlük Kota Aşımı
 ```
-ERROR: ALL 20 keys exhausted daily quota. Total: 29000 calls today.
+ERROR: ALL 23 keys exhausted daily quota. Total: 33350 calls today.
 ```
 ✅ Graceful shutdown, sonuçlar kaydedilir
 
@@ -56,11 +56,11 @@ bash quick_test.sh
 
 **Beklenen çıktı:**
 ```
-✅ Loaded 20 API keys
-📊 Total capacity: ~240 RPM, ~29000 RPD
+✅ Loaded 23 API keys
+📊 Total capacity: ~276 RPM, ~33350 RPD
 🧪 Testing with 10 queries...
-INFO: Multi-key mode: 20 keys detected
-INFO: Progress: 10 total calls across 20 keys
+INFO: Multi-key mode: 23 keys detected
+INFO: Progress: 10 total calls across 23 keys
 ✅ Test completed!
 ```
 
@@ -85,7 +85,7 @@ bash run_background.sh
 ```
 
 **Token kullanımı:** ~3,000,000 token (10,000 sorgu)
-**Key kullanımı:** 7 key (13 key kaldı)
+**Key kullanımı:** 7 key (16 key kaldı)
 
 ## 🔍 İzleme
 
@@ -103,9 +103,9 @@ tail -f logs/benchmark_*.log | grep -E "Progress|ERROR|exhausted"
 
 **Normal:**
 ```
-INFO: Progress: 100 total calls across 20 keys (avg 5/key)
-INFO: Progress: 500 total calls across 20 keys (avg 25/key)
-INFO: Progress: 1000 total calls across 20 keys (avg 50/key)
+INFO: Progress: 100 total calls across 23 keys (avg 4/key)
+INFO: Progress: 500 total calls across 23 keys (avg 22/key)
+INFO: Progress: 1000 total calls across 23 keys (avg 43/key)
 ```
 
 **Key Rotasyonu (Normal):**
@@ -125,13 +125,13 @@ INFO: Result written to: results/msmarco_seed42.json
 **Çözüm:**
 ```bash
 source .env
-echo $GEMINI_API_KEYS | wc -w  # 20 olmalı
+echo $GEMINI_API_KEYS | wc -w  # 23 olmalı
 ```
 
 ### Sorun 2: Yavaş çalışıyor
-**Normal!** Her key 4.8s bekliyor. 20 key ile:
+**Normal!** Her key 4.8s bekliyor. 23 key ile:
 - 20 sorgu/dakika → 1 key
-- 240 sorgu/dakika → 20 key (paralel)
+- 276 sorgu/dakika → 23 key (paralel)
 
 ### Sorun 3: "ALL keys exhausted"
 **Çözüm:** Yarın devam et (kotalar gece yarısı PST'de reset)
@@ -145,7 +145,7 @@ echo $GEMINI_API_KEYS | wc -w  # 20 olmalı
 | 1,000 | 300 | 300,000 | 1 |
 | 5,000 | 300 | 1,500,000 | 4 |
 | 10,000 | 300 | 3,000,000 | 7 |
-| 29,000 | 300 | 8,700,000 | 20 |
+| 33,350 | 300 | 10,005,000 | 23 |
 
 **Not:** Gemini free tier token limiti yok, sadece RPM/RPD limiti var.
 

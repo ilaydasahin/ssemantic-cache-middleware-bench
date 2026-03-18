@@ -1,14 +1,14 @@
-# Quick Start: 20 Free Gemini Keys
+# Quick Start: 23 Free Gemini Keys (EXTENDED CAPACITY)
 
-**Goal**: Run full benchmark suite (10K+ queries) completely free using 20 Gemini API keys.
+**Goal**: Run full benchmark suite (10K+ queries) completely free using 23 Gemini API keys.
 
-## 1. Get 20 API Keys (5 minutes)
+## 1. Get 23 API Keys (5 minutes)
 
 Visit: https://aistudio.google.com/app/apikey
 
-- Create 20 keys (you can use different Google accounts)
+- Create 23 keys (you can use different Google accounts)
 - Each key is free: 15 RPM, 1,500 RPD
-- Total capacity: ~240 RPM, ~29,000 RPD
+- Total capacity: ~276 RPM, ~33,350 RPD
 
 ## 2. Configure Keys (1 minute)
 
@@ -16,7 +16,7 @@ Visit: https://aistudio.google.com/app/apikey
 # Copy example file
 cp .env.example .env
 
-# Edit .env and paste your 20 keys
+# Edit .env and paste your 23 keys
 nano .env
 
 # Load environment
@@ -26,7 +26,7 @@ source .env
 Or directly:
 
 ```bash
-export GEMINI_API_KEYS="key1,key2,key3,...,key20"
+export GEMINI_API_KEYS="key1,key2,key3,...,key23"
 ```
 
 ## 3. Test Setup (2 minutes)
@@ -38,10 +38,10 @@ bash test_multi_key.sh
 
 Expected output:
 ```
-✅ Found 20 API keys
+✅ Found 23 API keys
 📊 Estimated capacity:
-   - Rate: ~240 requests/minute
-   - Daily: ~29,000 requests/day
+   - Rate: ~276 requests/minute
+   - Daily: ~33,350 requests/day
 🧪 Running test with 50 queries...
 ✅ Test completed!
 ```
@@ -55,11 +55,11 @@ bash run_full_benchmark_suite.sh
 
 Progress logs:
 ```
-INFO: ✅ Multi-key mode: 20 keys detected. Total capacity: ~240RPM, ~29000RPD
-INFO: Progress: 100 total calls across 20 keys (avg 5/key)
-INFO: Progress: 200 total calls across 20 keys (avg 10/key)
+INFO: ✅ Multi-key mode: 23 keys detected. Total capacity: ~276RPM, ~33350RPD
+INFO: Progress: 100 total calls across 23 keys (avg 4/key)
+INFO: Progress: 200 total calls across 23 keys (avg 9/key)
 ...
-INFO: Progress: 10000 total calls across 20 keys (avg 500/key)
+INFO: Progress: 10000 total calls across 23 keys (avg 435/key)
 ```
 
 ## What Happens Automatically
@@ -67,7 +67,7 @@ INFO: Progress: 10000 total calls across 20 keys (avg 500/key)
 ✅ **Rate Limiting**: Each key waits 4.8s between calls  
 ✅ **Quota Tracking**: Stops at 1,450 calls per key (safe buffer)  
 ✅ **Key Rotation**: Automatically switches when a key is exhausted  
-✅ **Parallel Execution**: Up to 20 concurrent requests  
+✅ **Parallel Execution**: Up to 23 concurrent requests  
 ✅ **Progress Logging**: Updates every 100 calls  
 
 ## Quota Management
@@ -78,12 +78,12 @@ INFO: Progress: 10000 total calls across 20 keys (avg 500/key)
 | 5,000 queries | 4 keys | ~90 min |
 | 10,000 queries | 7 keys | ~180 min |
 | 20,000 queries | 14 keys | ~360 min |
-| 29,000 queries | 20 keys | ~500 min |
+| 33,350 queries | 23 keys | ~500 min |
 
 ## If Quota Exhausted
 
 ```
-ERROR: ALL 20 keys exhausted daily quota. Total: 29000 calls today.
+ERROR: ALL 23 keys exhausted daily quota. Total: 33350 calls today.
 ```
 
 **Solutions**:
@@ -93,7 +93,7 @@ ERROR: ALL 20 keys exhausted daily quota. Total: 29000 calls today.
 
 ## Cost: $0.00
 
-With 20 free keys, you can run the entire benchmark suite without any cost!
+With 23 free keys, you can run the entire benchmark suite without any cost!
 
 ## Need Help?
 
