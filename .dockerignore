@@ -1,0 +1,14 @@
+target/
+.git/
+.idea/
+.vscode/
+*.log
+.env
+application-local.yml
+results/
+logs/
+checkpoints/
+venv*/
+__pycache__/
+*.pyc
+.DS_Store

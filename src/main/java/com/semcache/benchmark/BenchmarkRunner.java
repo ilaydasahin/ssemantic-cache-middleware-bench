@@ -312,6 +312,7 @@ public class BenchmarkRunner {
 
         // TURBO MODE: Parallel processing of the test set across all available LLM keys.
         java.util.concurrent.atomic.AtomicInteger progressCounter = new java.util.concurrent.atomic.AtomicInteger(0);
+        long benchmarkStartTime = System.currentTimeMillis();
         queryIndices.parallelStream().forEach(index -> {
             // Skip if already completed (checkpoint resume)
             if (checkpoint.completedQueryIndices.contains(index)) {
@@ -392,14 +393,26 @@ public class BenchmarkRunner {
 
             int done = progressCounter.incrementAndGet();
             
-            // Mark query as completed and save checkpoint every 10 queries
+            // Mark query as completed and save checkpoint (adaptive frequency)
             checkpoint.completedQueryIndices.add(index);
-            if (done % 10 == 0) {
+            int checkpointFrequency = done < 100 ? 5 : 50; // More frequent early, less later
+            if (done % checkpointFrequency == 0) {
                 checkpointManager.saveCheckpoint(checkpoint);
             }
             
+            // Enhanced progress reporting every 100 queries
             if (done % 100 == 0) {
-                log.info("Progress: {}/{} queries processed...", done, testSize);
+                long elapsedMs = System.currentTimeMillis() - benchmarkStartTime;
+                double progressPct = (done * 100.0) / testSize;
+                long etaMs = (long) ((elapsedMs / done) * (testSize - done));
+                long etaMinutes = etaMs / 60000;
+                
+                // Calculate current metrics
+                double currentHitRate = metricsCollector.getHitCount() * 100.0 / done;
+                double avgLatency = metricsCollector.getAverageLatency();
+                
+                log.info("Progress: {}/{} ({:.1f}%) | ETA: {}min | Hit Rate: {:.1f}% | Avg Latency: {:.0f}ms",
+                        done, testSize, progressPct, etaMinutes, currentHitRate, avgLatency);
             }
             
             success = true; // Mark as successful

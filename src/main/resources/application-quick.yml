@@ -1,0 +1,15 @@
+# Quick Test Profile - 5 minutes
+spring:
+  profiles:
+    active: benchmark
+
+benchmark:
+  current-dataset: msmarco
+  current-seed: 42
+  sample-size: 100
+  similarity-threshold: 0.90
+  output-file: results/quick_test.json
+  
+  warmup-ratio: 0.30
+  zipfian-skew: 0.0
+  noise-probability: 0.0

@@ -64,6 +64,15 @@ public class GeminiService implements LLMService {
     private static final int DAILY_QUOTA_PER_KEY = 1450; // Safe buffer for 1500 RPD limit
     private volatile long lastQuotaResetTime = System.currentTimeMillis();
     private static final long QUOTA_RESET_INTERVAL_MS = 24 * 60 * 60 * 1000; // 24 hours
+    
+    /**
+     * Calculate time until next PST midnight (when quotas reset)
+     */
+    private long getTimeUntilPSTMidnight() {
+        java.time.ZonedDateTime now = java.time.ZonedDateTime.now(java.time.ZoneId.of("America/Los_Angeles"));
+        java.time.ZonedDateTime nextMidnight = now.toLocalDate().plusDays(1).atStartOfDay(java.time.ZoneId.of("America/Los_Angeles"));
+        return java.time.Duration.between(now, nextMidnight).toMillis();
+    }
 
     public GeminiService(MeterRegistry meterRegistry) {
         this.meterRegistry = meterRegistry;
@@ -178,25 +187,27 @@ public class GeminiService implements LLMService {
                     .allMatch(usage -> usage.get() >= DAILY_QUOTA_PER_KEY);
             
             if (allExhausted) {
-                // Calculate time until next reset (PST midnight = UTC-8)
-                long now = System.currentTimeMillis();
-                long timeSinceReset = now - lastQuotaResetTime;
-                long timeUntilReset = QUOTA_RESET_INTERVAL_MS - timeSinceReset;
-                
+                // Calculate time until next PST midnight (actual quota reset time)
+                long timeUntilReset = getTimeUntilPSTMidnight();
                 long hoursUntilReset = timeUntilReset / (60 * 60 * 1000);
                 long minutesUntilReset = (timeUntilReset % (60 * 60 * 1000)) / (60 * 1000);
                 
                 int totalCalls = keyDailyUsage.values().stream()
                         .mapToInt(java.util.concurrent.atomic.AtomicInteger::get).sum();
                 
-                log.warn("⏰ ALL {} keys exhausted ({} total calls). Waiting for quota reset... Time remaining: {}h {}m", 
-                        apiKeys.length, totalCalls, hoursUntilReset, minutesUntilReset);
-                log.warn("💤 System will auto-resume when quotas reset. Checkpoint saved.");
+                java.time.ZonedDateTime resetTime = java.time.ZonedDateTime.now(java.time.ZoneId.of("America/Los_Angeles"))
+                        .toLocalDate().plusDays(1).atStartOfDay(java.time.ZoneId.of("America/Los_Angeles"));
+                
+                log.warn("⏰ ALL {} keys exhausted ({} total calls). Waiting for PST midnight quota reset...", 
+                        apiKeys.length, totalCalls);
+                log.warn("💤 Reset time: {} PST | Time remaining: {}h {}m", 
+                        resetTime.format(java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss")),
+                        hoursUntilReset, minutesUntilReset);
+                log.warn("📊 Checkpoint saved. System will auto-resume.");
                 
                 // Wait 5 minutes and retry (will trigger quota reset check)
-                // This creates an infinite loop until quotas reset - NO FAILURE!
                 return Mono.delay(Duration.ofMinutes(5))
-                           .flatMap(d -> attemptGenerate(query, 0)); // Reset attempt counter
+                           .flatMap(d -> attemptGenerate(query, 0));
             }
             
             // Otherwise just rate-limited, wait and retry

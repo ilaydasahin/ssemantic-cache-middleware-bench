@@ -150,6 +150,20 @@ public class MetricsCollector {
     public void reset() {
         observations.clear();
     }
+    
+    /** Returns current hit count for progress reporting */
+    public int getHitCount() {
+        return (int) observations.stream().filter(Observation::hit).count();
+    }
+    
+    /** Returns current average latency for progress reporting */
+    public double getAverageLatency() {
+        if (observations.isEmpty()) return 0.0;
+        return observations.stream()
+                .mapToLong(Observation::totalLatencyMs)
+                .average()
+                .orElse(0.0);
+    }
 
     // ─────────────────────────────────────────────────────────────────────────
     // Private helpers

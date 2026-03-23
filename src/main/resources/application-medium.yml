@@ -1,0 +1,15 @@
+# Medium Test Profile - 1 hour
+spring:
+  profiles:
+    active: benchmark
+
+benchmark:
+  current-dataset: msmarco
+  current-seed: 42
+  sample-size: 1000
+  similarity-threshold: 0.90
+  output-file: results/medium_test.json
+  
+  warmup-ratio: 0.30
+  zipfian-skew: 0.7
+  noise-probability: 0.0

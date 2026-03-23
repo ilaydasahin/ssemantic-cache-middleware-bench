@@ -1,0 +1,15 @@
+# Full Benchmark Profile - 3 hours
+spring:
+  profiles:
+    active: benchmark
+
+benchmark:
+  current-dataset: msmarco
+  current-seed: 42
+  sample-size: 10000
+  similarity-threshold: 0.90
+  output-file: results/full_benchmark.json
+  
+  warmup-ratio: 0.30
+  zipfian-skew: 0.7
+  noise-probability: 0.05
