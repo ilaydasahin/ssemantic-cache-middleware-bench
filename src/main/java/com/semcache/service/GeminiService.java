@@ -31,6 +31,14 @@ public class GeminiService implements LLMService {
 
     private static final Logger log = LoggerFactory.getLogger(GeminiService.class);
     private static final String GEMINI_API_URL = "https://generativelanguage.googleapis.com/v1beta/models/";
+    
+    // Configuration constants (extracted from magic numbers)
+    private static final long CALL_SPACING_MS = 4800; // 12.5 RPM (safe buffer for 15 RPM)
+    private static final int DAILY_QUOTA_PER_KEY = 1450; // Safe buffer for 1500 RPD limit
+    private static final long QUOTA_RESET_INTERVAL_MS = 24 * 60 * 60 * 1000; // 24 hours
+    private static final int MAX_RETRY_ATTEMPTS = 100;
+    private static final long MAX_BACKOFF_MS = 60000; // 60 seconds
+    private static final long QUOTA_CHECK_INTERVAL_MS = 5 * 60 * 1000; // 5 minutes
 
     @Value("${llm.api-keys:}")
     private String apiKeysString;
@@ -56,14 +64,12 @@ public class GeminiService implements LLMService {
     
     // M.6/M.8 Robustness: Parallel Rate Limiting
     // Free tier: 15 RPM per key, 1500 RPD per key
-    // With 20 keys: 300 RPM total, 30,000 RPD total
+    // With 77 keys: 924 RPM total, 111,650 RPD total
     private Semaphore parallelLimiter;
     private final Map<String, java.util.concurrent.atomic.AtomicLong> lastKeyCallTime = new java.util.concurrent.ConcurrentHashMap<>();
     private final Map<String, java.util.concurrent.atomic.AtomicInteger> keyDailyUsage = new java.util.concurrent.ConcurrentHashMap<>();
-    private static final Duration CALL_SPACING = Duration.ofMillis(4800); // 12.5 RPM (safe buffer for 15 RPM)
-    private static final int DAILY_QUOTA_PER_KEY = 1450; // Safe buffer for 1500 RPD limit
+    private static final Duration CALL_SPACING = Duration.ofMillis(CALL_SPACING_MS);
     private volatile long lastQuotaResetTime = System.currentTimeMillis();
-    private static final long QUOTA_RESET_INTERVAL_MS = 24 * 60 * 60 * 1000; // 24 hours
     
     /**
      * Calculate time until next PST midnight (when quotas reset)
@@ -80,16 +86,43 @@ public class GeminiService implements LLMService {
 
     @PostConstruct
     public void init() {
+        // Validate API keys configuration
         if (apiKeysString != null && !apiKeysString.isEmpty()) {
             this.apiKeys = apiKeysString.split(",");
             for (int i = 0; i < apiKeys.length; i++) {
                 apiKeys[i] = apiKeys[i].trim();
+                if (apiKeys[i].isEmpty()) {
+                    throw new IllegalStateException("Empty API key found at index " + i);
+                }
+                if (apiKeys[i].equals("REPLACE_ME")) {
+                    throw new IllegalStateException(
+                            "API keys not configured. Please set llm.api-keys in application.yml or GEMINI_API_KEYS environment variable");
+                }
                 lastKeyCallTime.put(apiKeys[i], new java.util.concurrent.atomic.AtomicLong(0));
                 keyDailyUsage.put(apiKeys[i], new java.util.concurrent.atomic.AtomicInteger(0));
             }
         } else {
             this.apiKeys = new String[0];
             log.error("No API keys provided in llm.api-keys");
+            throw new IllegalStateException(
+                    "No API keys configured. Please set llm.api-keys in application.yml or GEMINI_API_KEYS environment variable");
+        }
+        
+        // Validate model configuration
+        if (model == null || model.isEmpty()) {
+            throw new IllegalStateException("LLM model not configured");
+        }
+        
+        // Validate temperature
+        if (temperature < 0.0 || temperature > 2.0) {
+            throw new IllegalStateException(
+                    "Invalid temperature: " + temperature + " (must be in [0.0, 2.0])");
+        }
+        
+        // Validate max output tokens
+        if (maxOutputTokens <= 0 || maxOutputTokens > 8192) {
+            throw new IllegalStateException(
+                    "Invalid max output tokens: " + maxOutputTokens + " (must be in (0, 8192])");
         }
 
         // Parallel permits = number of keys (20 keys = 20 concurrent requests)
@@ -125,7 +158,7 @@ public class GeminiService implements LLMService {
                 .description("Number of API key rotations")
                 .register(meterRegistry);
 
-        log.info("GeminiService initialized: model={}, keysLoaded={}, temperature={}, maxTokens={}, totalCapacity={}RPM/{}RPD",
+        log.info("GeminiService initialized: model={}, keysLoaded={} (masked for security), temperature={}, maxTokens={}, totalCapacity={}RPM/{}RPD",
                 model, apiKeys.length, temperature, maxOutputTokens, 
                 apiKeys.length * 15, apiKeys.length * 1500);
         
@@ -133,6 +166,8 @@ public class GeminiService implements LLMService {
             log.info("✅ Multi-key mode: {} keys detected. Total capacity: ~{}RPM, ~{}RPD (free tier safe)",
                     apiKeys.length, apiKeys.length * 12, apiKeys.length * 1450);
         }
+        
+        log.info("✅ GeminiService configuration validation passed");
     }
 
     /**

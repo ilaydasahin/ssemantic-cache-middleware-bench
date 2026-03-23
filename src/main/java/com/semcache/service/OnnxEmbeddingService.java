@@ -61,6 +61,16 @@ public class OnnxEmbeddingService implements EmbeddingService {
     @PostConstruct
     public void init() {
         log.info("OnnxEmbeddingService initializing in multi-model mode...");
+        
+        // Validate configuration
+        if (primaryModelName == null || primaryModelName.isEmpty()) {
+            throw new IllegalStateException("Primary model name not configured");
+        }
+        if (maxLength <= 0 || maxLength > 512) {
+            throw new IllegalStateException(
+                    "Invalid max length: " + maxLength + " (must be in (0, 512])");
+        }
+        
         try {
             env = OrtEnvironment.getEnvironment();
 
@@ -69,11 +79,31 @@ public class OnnxEmbeddingService implements EmbeddingService {
             for (String m : commonModels) {
                 tryLoadModel(m);
             }
+            
+            // Validate that at least one model was loaded
+            if (modelRegistry.isEmpty()) {
+                throw new IllegalStateException(
+                        "No ONNX models loaded. Check that model files exist under models/. " +
+                        "Run: bash scripts/fetch_embedding_assets.sh");
+            }
+            
+            // Validate that primary model was loaded
+            if (!modelRegistry.containsKey(primaryModelName.toLowerCase())) {
+                log.warn("Primary model '{}' not found. Available models: {}", 
+                        primaryModelName, modelRegistry.keySet());
+                // Use first available model as fallback
+                String fallback = modelRegistry.keySet().iterator().next();
+                log.warn("Falling back to model: {}", fallback);
+                primaryModelName = fallback;
+            }
 
             log.info("OnnxEmbeddingService ready with {} models: {}",
                     modelRegistry.size(), modelRegistry.keySet());
+            log.info("✅ Primary model: {} ({}d)", primaryModelName, 
+                    modelRegistry.get(primaryModelName.toLowerCase()).dimension);
         } catch (Exception e) {
             log.error("Failed to initialize ONNX environment: {}", e.getMessage());
+            throw new IllegalStateException("ONNX initialization failed", e);
         }
     }
 
@@ -136,10 +166,10 @@ public class OnnxEmbeddingService implements EmbeddingService {
         return ctx.timer.record(() -> {
             OrtSession session = null;
             try {
-                // Acquire session from pool with shorter timeout (10s instead of 30s)
-                session = finalCtx.sessionPool.poll(10, java.util.concurrent.TimeUnit.SECONDS);
+                // Acquire session from pool with 60s timeout (increased for heavy load scenarios)
+                session = finalCtx.sessionPool.poll(60, java.util.concurrent.TimeUnit.SECONDS);
                 if (session == null) {
-                    throw new RuntimeException("Failed to acquire ONNX session from pool (timeout after 10s)");
+                    throw new RuntimeException("Failed to acquire ONNX session from pool (timeout after 60s). Pool size: " + finalCtx.poolSize);
                 }
                 return performInferenceWithSession(text, finalCtx, session);
             } catch (InterruptedException e) {
@@ -152,6 +182,31 @@ public class OnnxEmbeddingService implements EmbeddingService {
                 }
             }
         });
+    }
+    
+    /**
+     * Cleanup ONNX resources on shutdown to prevent memory leaks.
+     */
+    @jakarta.annotation.PreDestroy
+    public void shutdown() {
+        log.info("Shutting down OnnxEmbeddingService...");
+        for (Map.Entry<String, ModelContext> entry : modelRegistry.entrySet()) {
+            String modelName = entry.getKey();
+            ModelContext ctx = entry.getValue();
+            try {
+                // Drain and close all sessions in the pool
+                OrtSession session;
+                int closedCount = 0;
+                while ((session = ctx.sessionPool.poll()) != null) {
+                    session.close();
+                    closedCount++;
+                }
+                log.info("Closed {} ONNX sessions for model: {}", closedCount, modelName);
+            } catch (Exception e) {
+                log.error("Failed to close ONNX sessions for model {}: {}", modelName, e.getMessage());
+            }
+        }
+        log.info("OnnxEmbeddingService shutdown complete");
     }
     
     private float[] performInferenceWithSession(String text, ModelContext ctx, OrtSession session) {

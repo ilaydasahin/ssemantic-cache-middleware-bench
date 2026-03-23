@@ -155,6 +155,26 @@ public class CheckpointManager {
         
         try {
             Checkpoint checkpoint = objectMapper.readValue(file, Checkpoint.class);
+            
+            // Validate checkpoint integrity
+            if (checkpoint.experimentId == null || checkpoint.experimentId.isEmpty()) {
+                log.error("Checkpoint corrupted: missing experimentId");
+                return null;
+            }
+            if (checkpoint.completedQueryIndices == null) {
+                log.error("Checkpoint corrupted: completedQueryIndices is null");
+                return null;
+            }
+            if (checkpoint.totalQueries <= 0) {
+                log.error("Checkpoint corrupted: invalid totalQueries={}", checkpoint.totalQueries);
+                return null;
+            }
+            if (checkpoint.completedQueryIndices.size() > checkpoint.totalQueries) {
+                log.error("Checkpoint corrupted: completed {} > total {}", 
+                        checkpoint.completedQueryIndices.size(), checkpoint.totalQueries);
+                return null;
+            }
+            
             log.info("✅ Checkpoint loaded: {} ({}/{} queries already completed)", 
                     experimentId, 
                     checkpoint.completedQueryIndices.size(), 

@@ -41,6 +41,12 @@ import java.util.concurrent.locks.ReentrantReadWriteLock;
 public class SemanticCacheService {
 
     private static final Logger log = LoggerFactory.getLogger(SemanticCacheService.class);
+    
+    // Configuration constants (extracted from magic numbers)
+    private static final double EVICTION_THRESHOLD = 0.95; // Start eviction at 95% capacity
+    private static final double EVICTION_TARGET = 0.05; // Evict 5% of entries
+    private static final int EVICTION_BATCH_SIZE = 50; // Process 50 entries per batch
+    private static final long EVICTION_SCHEDULE_INTERVAL_MS = 1000; // Check every 1 second
 
     private final CacheProperties cacheProperties;
     private final EmbeddingService embeddingService;
@@ -100,6 +106,9 @@ public class SemanticCacheService {
                 .description("Number of cache misses")
                 .register(meterRegistry);
 
+        // Validate configuration parameters
+        validateConfiguration();
+
         // Build strategy registry — each strategy is stateless and reusable
         strategies = Map.of(
                 "SEMANTIC",            new SemanticStrategy(embeddingService, redisSearchService),
@@ -112,6 +121,51 @@ public class SemanticCacheService {
                 cacheProperties.getStrategy(),
                 cacheProperties.getSimilarityThreshold(),
                 cacheProperties.getKnnK());
+    }
+    
+    /**
+     * Validates critical configuration parameters to prevent runtime failures.
+     * Throws IllegalStateException if configuration is invalid.
+     */
+    private void validateConfiguration() {
+        // Validate similarity threshold
+        double threshold = cacheProperties.getSimilarityThreshold();
+        if (threshold < 0.0 || threshold > 1.0) {
+            throw new IllegalStateException(
+                    "Invalid similarity threshold: " + threshold + " (must be in [0.0, 1.0])");
+        }
+        
+        // Validate max entries
+        int maxEntries = cacheProperties.getMaxEntries();
+        if (maxEntries <= 0) {
+            throw new IllegalStateException(
+                    "Invalid max entries: " + maxEntries + " (must be > 0)");
+        }
+        if (maxEntries > 1_000_000) {
+            log.warn("⚠️ Very large cache size: {} entries. This may cause memory issues.", maxEntries);
+        }
+        
+        // Validate TTL
+        long ttl = cacheProperties.getTtlSeconds();
+        if (ttl <= 0) {
+            throw new IllegalStateException(
+                    "Invalid TTL: " + ttl + " seconds (must be > 0)");
+        }
+        
+        // Validate strategy
+        String strategy = cacheProperties.getStrategy();
+        if (strategy == null || strategy.isEmpty()) {
+            throw new IllegalStateException("Cache strategy not configured");
+        }
+        
+        // Validate KNN k
+        int k = cacheProperties.getKnnK();
+        if (k <= 0) {
+            throw new IllegalStateException(
+                    "Invalid KNN k: " + k + " (must be > 0)");
+        }
+        
+        log.info("✅ Configuration validation passed");
     }
 
     // ── Public API ────────────────────────────────────────────────────────────

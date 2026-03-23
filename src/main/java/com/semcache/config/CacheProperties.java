@@ -1,11 +1,16 @@
 package com.semcache.config;
 
+import jakarta.annotation.PostConstruct;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.context.annotation.Configuration;
 
 @Configuration
 @ConfigurationProperties(prefix = "cache")
 public class CacheProperties {
+    
+    private static final Logger log = LoggerFactory.getLogger(CacheProperties.class);
 
     private double similarityThreshold = 0.90;
     private int knnK = 5;
@@ -16,6 +21,41 @@ public class CacheProperties {
     private boolean hnswEnabled = true;
     private double zipfianSkew = 0.0;
     private HnswConfig hnsw = new HnswConfig();
+    
+    /**
+     * Validates configuration properties after initialization.
+     * Throws IllegalArgumentException if any property is invalid.
+     */
+    @PostConstruct
+    public void validateConfiguration() {
+        if (similarityThreshold < 0.0 || similarityThreshold > 1.0) {
+            throw new IllegalArgumentException(
+                    "cache.similarityThreshold must be in [0, 1], got: " + similarityThreshold);
+        }
+        
+        if (knnK <= 0) {
+            throw new IllegalArgumentException(
+                    "cache.knnK must be > 0, got: " + knnK);
+        }
+        
+        if (maxEntries <= 0) {
+            throw new IllegalArgumentException(
+                    "cache.maxEntries must be > 0, got: " + maxEntries);
+        }
+        
+        if (ttlSeconds <= 0) {
+            throw new IllegalArgumentException(
+                    "cache.ttlSeconds must be > 0, got: " + ttlSeconds);
+        }
+        
+        if (zipfianSkew < 0.0) {
+            throw new IllegalArgumentException(
+                    "cache.zipfianSkew must be >= 0, got: " + zipfianSkew);
+        }
+        
+        log.info("✅ Cache configuration validated: threshold={}, maxEntries={}, ttl={}s, strategy={}", 
+                similarityThreshold, maxEntries, ttlSeconds, strategy);
+    }
 
     // Getters and Setters
     public double getSimilarityThreshold() { return similarityThreshold; }

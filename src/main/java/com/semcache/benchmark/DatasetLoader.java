@@ -63,6 +63,9 @@ public class DatasetLoader {
      * @throws DatasetLoadException if the file is missing, empty, or malformed
      */
     public List<DatasetRecord> load(String datasetPath) {
+        // Security: Validate dataset path is within allowed directory
+        validateDatasetPath(datasetPath);
+        
         Path filePath = Paths.get(datasetPath);
         validateFileExists(filePath, datasetPath);
 
@@ -75,6 +78,25 @@ public class DatasetLoader {
                 datasetPath, records.size(), sha256);
 
         return Collections.unmodifiableList(records);
+    }
+    
+    /**
+     * Validates that dataset path is within allowed directory (data/).
+     * Prevents path traversal attacks (e.g., ../../../etc/passwd).
+     */
+    private void validateDatasetPath(String datasetPath) {
+        try {
+            Path normalizedPath = Paths.get(datasetPath).normalize();
+            Path dataDir = Paths.get("data").toAbsolutePath().normalize();
+            
+            // Check if path starts with data/ directory
+            if (!normalizedPath.toAbsolutePath().normalize().startsWith(dataDir)) {
+                throw new DatasetLoadException(
+                        "Dataset path must be within 'data/' directory. Got: " + datasetPath);
+            }
+        } catch (Exception e) {
+            throw new DatasetLoadException("Invalid dataset path: " + datasetPath, e);
+        }
     }
 
     /**

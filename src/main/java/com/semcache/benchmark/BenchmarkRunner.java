@@ -61,6 +61,14 @@ import java.io.File;
 public class BenchmarkRunner {
 
     private static final Logger log = LoggerFactory.getLogger(BenchmarkRunner.class);
+    
+    // Configuration constants (extracted from magic numbers)
+    private static final int HEALTH_CHECK_FREQUENCY = 100; // queries
+    private static final int PROGRESS_REPORT_FREQUENCY = 100; // queries
+    private static final int CHECKPOINT_FREQUENCY_SMALL = 5; // for first 100 queries
+    private static final int CHECKPOINT_FREQUENCY_LARGE = 50; // for remaining queries
+    private static final int MAX_THREAD_POOL_SIZE = 32;
+    private static final int THREAD_POOL_SHUTDOWN_TIMEOUT_SECONDS = 60;
 
     // ── Configurable experiment parameter (S3: no hardcoded constants) ────────
     /**
@@ -149,10 +157,24 @@ public class BenchmarkRunner {
                     config.similarityThreshold(), split.testSet().size());
             log.info("Starting new experiment: {}", experimentId);
         } else {
-            log.info("Resuming experiment: {} ({}/{} queries remaining)", 
-                    experimentId, 
-                    split.testSet().size() - checkpoint.completedQueryIndices.size(),
-                    split.testSet().size());
+            // Validate checkpoint integrity
+            if (checkpoint.totalQueries != split.testSet().size()) {
+                log.warn("Checkpoint mismatch: expected {} queries, found {}. Starting fresh.", 
+                        split.testSet().size(), checkpoint.totalQueries);
+                checkpoint = new CheckpointManager.Checkpoint(
+                        experimentId, config.datasetName(), config.randomSeed(), 
+                        config.similarityThreshold(), split.testSet().size());
+            } else if (checkpoint.completedQueryIndices == null) {
+                log.error("Checkpoint corrupted: completedQueryIndices is null. Starting fresh.");
+                checkpoint = new CheckpointManager.Checkpoint(
+                        experimentId, config.datasetName(), config.randomSeed(), 
+                        config.similarityThreshold(), split.testSet().size());
+            } else {
+                log.info("Resuming experiment: {} ({}/{} queries remaining)", 
+                        experimentId, 
+                        split.testSet().size() - checkpoint.completedQueryIndices.size(),
+                        split.testSet().size());
+            }
         }
 
         // ── Phase 2: Register ground-truth answers in Mock LLM (if active) ───
@@ -317,7 +339,7 @@ public class BenchmarkRunner {
 
         // TURBO MODE: Parallel processing with custom ForkJoinPool to prevent thread exhaustion
         // Default ForkJoinPool can cause issues with 450K queries - use bounded pool
-        int parallelism = Math.min(Runtime.getRuntime().availableProcessors() * 2, 32);
+        int parallelism = Math.min(Runtime.getRuntime().availableProcessors() * 2, MAX_THREAD_POOL_SIZE);
         java.util.concurrent.ForkJoinPool customThreadPool = new java.util.concurrent.ForkJoinPool(parallelism);
         
         java.util.concurrent.atomic.AtomicInteger progressCounter = new java.util.concurrent.atomic.AtomicInteger(0);
@@ -408,18 +430,18 @@ public class BenchmarkRunner {
             
             // Mark query as completed and save checkpoint (thread-safe)
             completedIndices.add(index);
-            int checkpointFrequency = done < 100 ? 5 : 50;
+            int checkpointFrequency = done < 100 ? CHECKPOINT_FREQUENCY_SMALL : CHECKPOINT_FREQUENCY_LARGE;
             if (done % checkpointFrequency == 0) {
                 checkpointManager.saveCheckpoint(checkpoint);
             }
             
-            // Health check every 100 queries
-            if (done % 100 == 0) {
+            // Health check every N queries
+            if (done % HEALTH_CHECK_FREQUENCY == 0) {
                 performHealthCheck(done, testSize);
             }
             
-            // Enhanced progress reporting every 100 queries
-            if (done % 100 == 0) {
+            // Enhanced progress reporting every N queries
+            if (done % PROGRESS_REPORT_FREQUENCY == 0) {
                 long elapsedMs = System.currentTimeMillis() - benchmarkStartTime;
                 double progressPct = (done * 100.0) / testSize;
                 long etaMs = (long) ((elapsedMs / done) * (testSize - done));
@@ -459,7 +481,7 @@ public class BenchmarkRunner {
         } finally {
             customThreadPool.shutdown();
             try {
-                if (!customThreadPool.awaitTermination(60, java.util.concurrent.TimeUnit.SECONDS)) {
+                if (!customThreadPool.awaitTermination(THREAD_POOL_SHUTDOWN_TIMEOUT_SECONDS, java.util.concurrent.TimeUnit.SECONDS)) {
                     customThreadPool.shutdownNow();
                 }
             } catch (InterruptedException e) {
