@@ -6,31 +6,31 @@ Bu sistem **asla fail olmaz** ve **ücretsiz olarak tamamlanır**.
 
 ## 🔑 Kapasite
 
-- **38 Gemini API Key** (ücretsiz tier)
-- **Dakikalık:** 456 istek (38 × 12 RPM)
-- **Günlük:** 55,100 istek (38 × 1,450 RPD)
+- **77 Gemini API Key** (ücretsiz tier)
+- **Dakikalık:** 924 istek (77 × 12 RPM)
+- **Günlük:** 111,650 istek (77 × 1,450 RPD)
 - **Maliyet:** $0.00
 
 ## 🛡️ Hata Yönetimi (NEVER FAIL)
 
 ### 1. Key Rotasyonu (Otomatik)
 ```
-Key 1 → 4.8s bekle → Key 2 → 4.8s bekle → ... → Key 38
+Key 1 → 4.8s bekle → Key 2 → 4.8s bekle → ... → Key 77
 ```
 - Her key 4.8 saniye bekler (12.5 RPM, güvenli buffer)
 - Kota dolan key atlanır, sıradaki kullanılır
-- 38 key paralel çalışır
+- 77 key paralel çalışır
 
 ### 2. Günlük Kota Biterse
 ```
-Senaryo: Tüm 38 key günlük kotasını doldurdu (55,100 çağrı)
+Senaryo: Tüm 77 key günlük kotasını doldurdu (111,650 çağrı)
 
 Sistem:
 1. ⏰ "Waiting for quota reset... Time remaining: 14h 23m"
 2. 💤 Checkpoint kaydedilir
 3. 5 dakikada bir kontrol eder
 4. 24 saat sonra otomatik reset
-5. 🔄 "Daily quota reset completed! All 38 keys refreshed"
+5. 🔄 "Daily quota reset completed! All 77 keys refreshed"
 6. ✅ Kaldığı yerden devam eder
 
 SONUÇ: Deney durur AMA fail olmaz, otomatik devam eder
@@ -169,23 +169,23 @@ bash monitor.sh
 
 ### Normal Çalışma
 ```
-INFO: ✅ Multi-key mode: 38 keys detected. Total capacity: ~456RPM, ~55100RPD
-INFO: Progress: 100 total calls across 38 keys (avg 3/key)
-INFO: Progress: 1000 total calls across 38 keys (avg 26/key)
-INFO: Progress: 10000 total calls across 38 keys (avg 263/key)
+INFO: ✅ Multi-key mode: 77 keys detected. Total capacity: ~924RPM, ~111650RPD
+INFO: Progress: 100 total calls across 77 keys (avg 1/key)
+INFO: Progress: 1000 total calls across 77 keys (avg 13/key)
+INFO: Progress: 10000 total calls across 77 keys (avg 130/key)
 ✅ Experiment completed successfully: msmarco_seed42_t0.90
 ```
 
 ### Kota Bitince
 ```
-WARN: ⏰ ALL 38 keys exhausted (55100 total calls). Waiting... Time remaining: 14h 23m
+WARN: ⏰ ALL 77 keys exhausted (111650 total calls). Waiting... Time remaining: 14h 23m
 WARN: 💤 System will auto-resume when quotas reset. Checkpoint saved.
 [5 dakika sonra]
-WARN: ⏰ ALL 38 keys exhausted (55100 total calls). Waiting... Time remaining: 14h 18m
+WARN: ⏰ ALL 77 keys exhausted (111650 total calls). Waiting... Time remaining: 14h 18m
 ...
 [24 saat sonra]
-INFO: 🔄 Daily quota reset completed! All 38 keys refreshed.
-INFO: ✅ Resuming experiment: msmarco_seed42_t0.90 (44900/100000 queries remaining)
+INFO: 🔄 Daily quota reset completed! All 77 keys refreshed.
+INFO: ✅ Resuming experiment: msmarco_seed42_t0.90 (338350/450000 queries remaining)
 ```
 
 ### Network Hatası
@@ -199,7 +199,7 @@ INFO: Progress: 5433 total calls across 38 keys (avg 143/key)
 
 | Durum | Sistem Davranışı | Sonuç |
 |-------|------------------|-------|
-| Normal | 38 key paralel çalışır | ✅ Hızlı tamamlanır |
+| Normal | 77 key paralel çalışır | ✅ Hızlı tamamlanır |
 | Kota bitti | 5dk'da bir kontrol, 24h sonra reset | ✅ Otomatik devam |
 | Network hatası | 10s bekle, retry | ✅ Otomatik düzelir |
 | API hatası | 5s bekle, retry | ✅ Otomatik düzelir |

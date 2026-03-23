@@ -46,8 +46,48 @@ public class CheckpointManager {
     public CheckpointManager() {
         try {
             Files.createDirectories(Paths.get(CHECKPOINT_DIR));
+            // Clean up old checkpoints (older than 7 days) to prevent disk space issues
+            cleanupOldCheckpoints();
         } catch (IOException e) {
             log.error("Failed to create checkpoint directory", e);
+        }
+    }
+    
+    /**
+     * Deletes checkpoint files older than 7 days to prevent disk space accumulation.
+     * With 450K queries and frequent checkpoints, old files can accumulate to 2GB+.
+     */
+    private void cleanupOldCheckpoints() {
+        try {
+            File checkpointDir = new File(CHECKPOINT_DIR);
+            if (!checkpointDir.exists()) {
+                return;
+            }
+            
+            long sevenDaysAgo = System.currentTimeMillis() - (7L * 24 * 60 * 60 * 1000);
+            File[] files = checkpointDir.listFiles((dir, name) -> name.endsWith(".json"));
+            
+            if (files != null) {
+                int deletedCount = 0;
+                long freedBytes = 0;
+                
+                for (File file : files) {
+                    if (file.lastModified() < sevenDaysAgo) {
+                        long fileSize = file.length();
+                        if (file.delete()) {
+                            deletedCount++;
+                            freedBytes += fileSize;
+                        }
+                    }
+                }
+                
+                if (deletedCount > 0) {
+                    log.info("Cleaned up {} old checkpoints, freed {} MB", 
+                            deletedCount, freedBytes / (1024 * 1024));
+                }
+            }
+        } catch (Exception e) {
+            log.warn("Failed to cleanup old checkpoints: {}", e.getMessage());
         }
     }
     

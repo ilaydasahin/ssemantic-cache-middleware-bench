@@ -314,10 +314,17 @@ public class BenchmarkRunner {
                 queryIndices.add(i);
         }
 
-        // TURBO MODE: Parallel processing of the test set across all available LLM keys.
+        // TURBO MODE: Parallel processing with custom ForkJoinPool to prevent thread exhaustion
+        // Default ForkJoinPool can cause issues with 450K queries - use bounded pool
+        int parallelism = Math.min(Runtime.getRuntime().availableProcessors() * 2, 32);
+        java.util.concurrent.ForkJoinPool customThreadPool = new java.util.concurrent.ForkJoinPool(parallelism);
+        
         java.util.concurrent.atomic.AtomicInteger progressCounter = new java.util.concurrent.atomic.AtomicInteger(0);
         long benchmarkStartTime = System.currentTimeMillis();
-        queryIndices.parallelStream().forEach(index -> {
+        
+        try {
+            customThreadPool.submit(() -> {
+                queryIndices.parallelStream().forEach(index -> {
             // Skip if already completed (checkpoint resume)
             if (completedIndices.contains(index)) {
                 return;
@@ -325,10 +332,11 @@ public class BenchmarkRunner {
             
             DatasetRecord record = testSet.get(index);
             
-            // Retry loop - NEVER FAIL!
+            // Retry loop - NEVER FAIL! (but with max 100 attempts to prevent infinite loops)
             boolean success = false;
             int retryCount = 0;
-            while (!success) {
+            final int MAX_RETRIES = 100;
+            while (!success && retryCount < MAX_RETRIES) {
                 try {
                     long wallClockStart = System.nanoTime();
 
@@ -423,17 +431,36 @@ public class BenchmarkRunner {
             
                 } catch (Exception ex) {
                     retryCount++;
-                    log.error("Query {} failed (attempt {}): {}. Retrying in 5s...", 
-                            index, retryCount, ex.getMessage());
+                    if (retryCount >= MAX_RETRIES) {
+                        log.error("Query {} failed after {} attempts. Skipping to prevent infinite loop.", 
+                                index, MAX_RETRIES);
+                        break; // Exit retry loop after max attempts
+                    }
+                    log.error("Query {} failed (attempt {}/{}): {}. Retrying in 5s...", 
+                            index, retryCount, MAX_RETRIES, ex.getMessage());
                     try {
                         Thread.sleep(5000);
                     } catch (InterruptedException ie) {
                         Thread.currentThread().interrupt();
                     }
-                    // Loop continues - NEVER GIVE UP!
+                    // Loop continues - NEVER GIVE UP (until max retries)!
                 }
             } // end while
-        });
+                });
+            }).get(); // Wait for completion
+        } catch (Exception e) {
+            log.error("Parallel processing failed: {}", e.getMessage(), e);
+        } finally {
+            customThreadPool.shutdown();
+            try {
+                if (!customThreadPool.awaitTermination(60, java.util.concurrent.TimeUnit.SECONDS)) {
+                    customThreadPool.shutdownNow();
+                }
+            } catch (InterruptedException e) {
+                customThreadPool.shutdownNow();
+                Thread.currentThread().interrupt();
+            }
+        }
 
         log.info("Test phase complete: {} queries processed", testSet.size());
         return queryLogs;

@@ -82,25 +82,31 @@ public class MetricsCollector {
         }
 
         // Single pass over observations — collect all accumulators at once
-        int    totalQueries      = observations.size();
+        // Use synchronized block to prevent ConcurrentModificationException
+        int    totalQueries;
         int    cacheHits         = 0;
         long   sumEmbeddingMs    = 0L;
         long   sumLlmMs          = 0L;
         int    missCount         = 0;
         double totalActualCost   = 0.0;
         double totalBaselineCost = 0.0;
-        List<Long> allLatencies  = new ArrayList<>(totalQueries);
-
-        for (Observation o : observations) {
-            allLatencies.add(o.totalLatencyMs());
-            sumEmbeddingMs    += o.embeddingLatencyMs();
-            totalActualCost   += o.actualCost();
-            totalBaselineCost += o.baselineCost();
-            if (o.hit()) {
-                cacheHits++;
-            } else {
-                sumLlmMs += o.llmLatencyMs();
-                missCount++;
+        List<Long> allLatencies;
+        
+        synchronized (observations) {
+            totalQueries = observations.size();
+            allLatencies = new ArrayList<>(totalQueries);
+            
+            for (Observation o : observations) {
+                allLatencies.add(o.totalLatencyMs());
+                sumEmbeddingMs    += o.embeddingLatencyMs();
+                totalActualCost   += o.actualCost();
+                totalBaselineCost += o.baselineCost();
+                if (o.hit()) {
+                    cacheHits++;
+                } else {
+                    sumLlmMs += o.llmLatencyMs();
+                    missCount++;
+                }
             }
         }
 

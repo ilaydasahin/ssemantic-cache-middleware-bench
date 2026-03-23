@@ -95,8 +95,15 @@ public class GeminiService implements LLMService {
         // Parallel permits = number of keys (20 keys = 20 concurrent requests)
         this.parallelLimiter = new Semaphore(Math.max(1, apiKeys.length));
 
+        // Configure WebClient with timeouts to prevent hangs
+        io.netty.channel.ChannelOption channelOption = io.netty.channel.ChannelOption.CONNECT_TIMEOUT_MILLIS;
+        reactor.netty.http.client.HttpClient httpClient = reactor.netty.http.client.HttpClient.create()
+                .option(channelOption, 30000) // 30s connection timeout
+                .responseTimeout(Duration.ofSeconds(120)); // 120s response timeout (LLM can be slow)
+        
         this.webClient = WebClient.builder()
                 .baseUrl(GEMINI_API_URL)
+                .clientConnector(new org.springframework.http.client.reactive.ReactorClientHttpConnector(httpClient))
                 .build();
 
         this.llmTimer = Timer.builder("llm.latency")

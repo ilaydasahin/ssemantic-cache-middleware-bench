@@ -133,7 +133,34 @@ public class OnnxEmbeddingService implements EmbeddingService {
         }
 
         ModelContext finalCtx = ctx;
-        return ctx.timer.record(() -> performInference(text, finalCtx));
+        return ctx.timer.record(() -> {
+            OrtSession session = null;
+            try {
+                // Acquire session from pool with timeout
+                session = finalCtx.sessionPool.poll(30, java.util.concurrent.TimeUnit.SECONDS);
+                if (session == null) {
+                    throw new RuntimeException("Failed to acquire ONNX session from pool (timeout)");
+                }
+                return performInferenceWithSession(text, finalCtx, session);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                throw new RuntimeException("Interrupted while waiting for ONNX session", e);
+            } finally {
+                // Always return session to pool
+                if (session != null) {
+                    finalCtx.sessionPool.offer(session);
+                }
+            }
+        });
+    }
+    
+    private float[] performInferenceWithSession(String text, ModelContext ctx, OrtSession session) {
+        try {
+            return performInference(text, ctx, session);
+        } catch (Exception e) {
+            log.error("ONNX inference failed: {}", e.getMessage());
+            throw new RuntimeException("ONNX inference error", e);
+        }
     }
 
     @Override
@@ -162,12 +189,8 @@ public class OnnxEmbeddingService implements EmbeddingService {
         return primaryModelName;
     }
 
-    private float[] performInference(String text, ModelContext ctx) {
-        OrtSession session = null;
+    private float[] performInference(String text, ModelContext ctx, OrtSession session) {
         try {
-            // Acquire session from pool (blocks if all busy)
-            session = ctx.sessionPool.take();
-
             // T2: use per-model maxLength, fallback to global maxLength
             int seqLen = (ctx.maxLength > 0) ? ctx.maxLength : maxLength;
             List<Integer> tokenIds = ctx.tokenizer.tokenize(text, seqLen);
@@ -204,11 +227,6 @@ public class OnnxEmbeddingService implements EmbeddingService {
             }
         } catch (Exception e) {
             throw new RuntimeException("Inference failed for " + ctx.name, e);
-        } finally {
-            // Return session to pool
-            if (session != null) {
-                ctx.sessionPool.offer(session);
-            }
         }
     }
 

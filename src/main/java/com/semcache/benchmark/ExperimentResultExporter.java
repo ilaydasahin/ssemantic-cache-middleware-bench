@@ -71,15 +71,26 @@ public class ExperimentResultExporter {
 
         File outputFile = new File(config.outputFilePath());
         ensureParentDirectoryExists(outputFile);
+        
+        // Check disk space before writing (require at least 100MB free)
+        long freeSpaceBytes = outputFile.getParentFile().getFreeSpace();
+        long freeSpaceMB = freeSpaceBytes / (1024 * 1024);
+        if (freeSpaceMB < 100) {
+            throw new ExportException(
+                    String.format("Insufficient disk space: %d MB free (require 100 MB minimum)", freeSpaceMB));
+        }
 
         // Build the combined result envelope
         Map<String, Object> envelope = buildResultEnvelope(config, metrics);
 
-        try {
-            prettyMapper.writeValue(outputFile, envelope);
-            log.info("Result written to: {}", outputFile.getAbsolutePath());
-        } catch (Exception e) {
-            throw new ExportException("Failed to write result to " + config.outputFilePath(), e);
+        // Synchronized write to prevent concurrent file corruption
+        synchronized (this) {
+            try {
+                prettyMapper.writeValue(outputFile, envelope);
+                log.info("Result written to: {}", outputFile.getAbsolutePath());
+            } catch (Exception e) {
+                throw new ExportException("Failed to write result to " + config.outputFilePath(), e);
+            }
         }
 
         // Write per-query logs to a companion .logs.jsonl file
@@ -177,14 +188,18 @@ public class ExperimentResultExporter {
      */
     private void exportQueryLogs(String resultFilePath, List<QueryLog> queryLogs) {
         String logsPath = resultFilePath.replaceAll("\\.json$", ".logs.jsonl");
-        try (java.io.PrintWriter writer = new java.io.PrintWriter(
-                new java.io.BufferedWriter(new java.io.FileWriter(logsPath, false)))) {
-            for (QueryLog ql : queryLogs) {
-                writer.println(simpleMapper.writeValueAsString(ql));
+        
+        // Synchronized write to prevent concurrent file corruption
+        synchronized (this) {
+            try (java.io.PrintWriter writer = new java.io.PrintWriter(
+                    new java.io.BufferedWriter(new java.io.FileWriter(logsPath, false)))) {
+                for (QueryLog ql : queryLogs) {
+                    writer.println(simpleMapper.writeValueAsString(ql));
+                }
+                log.info("Query logs written ({} records): {}", queryLogs.size(), logsPath);
+            } catch (Exception e) {
+                log.warn("Could not write query logs to {}: {}", logsPath, e.getMessage());
             }
-            log.info("Query logs written ({} records): {}", queryLogs.size(), logsPath);
-        } catch (Exception e) {
-            log.warn("Could not write query logs to {}: {}", logsPath, e.getMessage());
         }
     }
 
