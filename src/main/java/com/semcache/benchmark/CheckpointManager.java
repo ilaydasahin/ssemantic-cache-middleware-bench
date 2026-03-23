@@ -1,0 +1,110 @@
+package com.semcache.benchmark;
+
+import com.fasterxml.jackson.databind.ObjectMapper;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.stereotype.Component;
+
+import java.io.File;
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
+import java.util.*;
+
+/**
+ * Checkpoint Manager - Saves progress and enables resume after quota exhaustion
+ */
+@Component
+public class CheckpointManager {
+    
+    private static final Logger log = LoggerFactory.getLogger(CheckpointManager.class);
+    private static final String CHECKPOINT_DIR = "checkpoints";
+    private final ObjectMapper objectMapper = new ObjectMapper();
+    
+    public static class Checkpoint {
+        public String experimentId;
+        public String dataset;
+        public long seed;
+        public double threshold;
+        public Set<Integer> completedQueryIndices = new HashSet<>();
+        public long lastUpdateTime;
+        public int totalQueries;
+        
+        public Checkpoint() {}
+        
+        public Checkpoint(String experimentId, String dataset, long seed, double threshold, int totalQueries) {
+            this.experimentId = experimentId;
+            this.dataset = dataset;
+            this.seed = seed;
+            this.threshold = threshold;
+            this.totalQueries = totalQueries;
+            this.lastUpdateTime = System.currentTimeMillis();
+        }
+    }
+    
+    public CheckpointManager() {
+        try {
+            Files.createDirectories(Paths.get(CHECKPOINT_DIR));
+        } catch (IOException e) {
+            log.error("Failed to create checkpoint directory", e);
+        }
+    }
+    
+    public void saveCheckpoint(Checkpoint checkpoint) {
+        checkpoint.lastUpdateTime = System.currentTimeMillis();
+        String filename = getCheckpointFilename(checkpoint.experimentId);
+        try {
+            objectMapper.writerWithDefaultPrettyPrinter()
+                    .writeValue(new File(filename), checkpoint);
+            log.debug("Checkpoint saved: {} ({}/{} queries completed)", 
+                    checkpoint.experimentId, 
+                    checkpoint.completedQueryIndices.size(), 
+                    checkpoint.totalQueries);
+        } catch (IOException e) {
+            log.error("Failed to save checkpoint: {}", checkpoint.experimentId, e);
+        }
+    }
+    
+    public Checkpoint loadCheckpoint(String experimentId) {
+        String filename = getCheckpointFilename(experimentId);
+        File file = new File(filename);
+        if (!file.exists()) {
+            return null;
+        }
+        
+        try {
+            Checkpoint checkpoint = objectMapper.readValue(file, Checkpoint.class);
+            log.info("✅ Checkpoint loaded: {} ({}/{} queries already completed)", 
+                    experimentId, 
+                    checkpoint.completedQueryIndices.size(), 
+                    checkpoint.totalQueries);
+            return checkpoint;
+        } catch (IOException e) {
+            log.error("Failed to load checkpoint: {}", experimentId, e);
+            return null;
+        }
+    }
+    
+    public void deleteCheckpoint(String experimentId) {
+        String filename = getCheckpointFilename(experimentId);
+        try {
+            Files.deleteIfExists(Paths.get(filename));
+            log.info("Checkpoint deleted: {}", experimentId);
+        } catch (IOException e) {
+            log.error("Failed to delete checkpoint: {}", experimentId, e);
+        }
+    }
+    
+    public boolean hasCheckpoint(String experimentId) {
+        return new File(getCheckpointFilename(experimentId)).exists();
+    }
+    
+    private String getCheckpointFilename(String experimentId) {
+        return CHECKPOINT_DIR + "/" + experimentId + ".json";
+    }
+    
+    public static String generateExperimentId(String dataset, long seed, double threshold) {
+        return String.format("%s_seed%d_t%.2f", dataset, seed, threshold);
+    }
+}

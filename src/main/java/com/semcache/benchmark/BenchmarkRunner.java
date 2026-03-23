@@ -83,6 +83,7 @@ public class BenchmarkRunner {
     private final MetricsCollector metricsCollector;
     private final ExperimentResultExporter resultExporter;
     private final NoiseGenerator noiseGenerator;
+    private final CheckpointManager checkpointManager;
 
     public BenchmarkRunner(SemanticCacheService cacheService,
             EmbeddingService embeddingService,
@@ -90,7 +91,8 @@ public class BenchmarkRunner {
             DatasetLoader datasetLoader,
             MetricsCollector metricsCollector,
             ExperimentResultExporter resultExporter,
-            NoiseGenerator noiseGenerator) {
+            NoiseGenerator noiseGenerator,
+            CheckpointManager checkpointManager) {
         this.cacheService = cacheService;
         this.embeddingService = embeddingService;
         this.llmService = llmService;
@@ -98,6 +100,7 @@ public class BenchmarkRunner {
         this.metricsCollector = metricsCollector;
         this.resultExporter = resultExporter;
         this.noiseGenerator = noiseGenerator;
+        this.checkpointManager = checkpointManager;
     }
 
     // ─────────────────────────────────────────────────────────────────────────
@@ -118,6 +121,10 @@ public class BenchmarkRunner {
      */
     public void run(ExperimentConfig config) throws Exception {
         log.info(config.toLogSummary());
+        
+        // Generate experiment ID for checkpoint tracking
+        String experimentId = CheckpointManager.generateExperimentId(
+                config.datasetName(), config.randomSeed(), config.similarityThreshold());
 
         // ── Phase 0: Reset stateful components ───────────────────────────────
         metricsCollector.reset();
@@ -131,24 +138,37 @@ public class BenchmarkRunner {
         DatasetSplit split = datasetLoader.split(sampledDataset, warmupRatio);
 
         log.info("Dataset ready: warmup={}, test={}", split.warmupSet().size(), split.testSet().size());
+        
+        // Check for existing checkpoint
+        CheckpointManager.Checkpoint checkpoint = checkpointManager.loadCheckpoint(experimentId);
+        if (checkpoint == null) {
+            checkpoint = new CheckpointManager.Checkpoint(
+                    experimentId, config.datasetName(), config.randomSeed(), 
+                    config.similarityThreshold(), split.testSet().size());
+            log.info("Starting new experiment: {}", experimentId);
+        } else {
+            log.info("Resuming experiment: {} ({}/{} queries remaining)", 
+                    experimentId, 
+                    split.testSet().size() - checkpoint.completedQueryIndices.size(),
+                    split.testSet().size());
+        }
 
         // ── Phase 2: Register ground-truth answers in Mock LLM (if active) ───
-        // Registering paraphrase → same answer prevents "Mock response for: ..."
-        // fallbacks
-        // that corrupt SBERT / ROUGE-L post-hoc evaluation (fix E3).
         registerGroundTruthIfMock(sampledDataset);
 
         // ── Phase 3: Pre-populate cache (warmup phase) ───────────────────────
-        // Only originals are stored; paraphrases are withheld to preserve test validity
-        // (E1).
         warmUpCache(split.warmupSet(), config.warmupStrategy());
 
-        // ── Phase 4: Measurement phase ───────────────────────────────────────
-        List<QueryLog> queryLogs = processTestSet(split.testSet(), config);
+        // ── Phase 4: Measurement phase (with checkpoint support) ─────────────
+        List<QueryLog> queryLogs = processTestSet(split.testSet(), config, checkpoint);
 
         // ── Phase 5: Compute and export results ──────────────────────────────
         AggregateMetrics metrics = metricsCollector.compute();
         resultExporter.export(config, metrics, queryLogs);
+        
+        // Delete checkpoint after successful completion
+        checkpointManager.deleteCheckpoint(experimentId);
+        log.info("✅ Experiment completed successfully: {}", experimentId);
     }
 
     // ─────────────────────────────────────────────────────────────────────────
@@ -253,7 +273,8 @@ public class BenchmarkRunner {
      * @param config  Active experiment configuration (for LLM cost estimation)
      * @return Ordered list of per-query observations for post-hoc evaluation
      */
-    private List<QueryLog> processTestSet(List<DatasetRecord> testSet, ExperimentConfig config) {
+    private List<QueryLog> processTestSet(List<DatasetRecord> testSet, ExperimentConfig config, 
+                                           CheckpointManager.Checkpoint checkpoint) {
         int testSize = testSet.size();
         List<QueryLog> queryLogs = java.util.Collections.synchronizedList(new ArrayList<>(testSize));
 
@@ -292,6 +313,11 @@ public class BenchmarkRunner {
         // TURBO MODE: Parallel processing of the test set across all available LLM keys.
         java.util.concurrent.atomic.AtomicInteger progressCounter = new java.util.concurrent.atomic.AtomicInteger(0);
         queryIndices.parallelStream().forEach(index -> {
+            // Skip if already completed (checkpoint resume)
+            if (checkpoint.completedQueryIndices.contains(index)) {
+                return;
+            }
+            
             DatasetRecord record = testSet.get(index);
             long wallClockStart = System.nanoTime();
 
@@ -359,6 +385,13 @@ public class BenchmarkRunner {
             }
 
             int done = progressCounter.incrementAndGet();
+            
+            // Mark query as completed and save checkpoint every 10 queries
+            checkpoint.completedQueryIndices.add(index);
+            if (done % 10 == 0) {
+                checkpointManager.saveCheckpoint(checkpoint);
+            }
+            
             if (done % 100 == 0) {
                 log.info("Progress: {}/{} queries processed...", done, testSize);
             }

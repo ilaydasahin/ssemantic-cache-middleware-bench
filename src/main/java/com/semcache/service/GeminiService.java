@@ -62,6 +62,8 @@ public class GeminiService implements LLMService {
     private final Map<String, java.util.concurrent.atomic.AtomicInteger> keyDailyUsage = new java.util.concurrent.ConcurrentHashMap<>();
     private static final Duration CALL_SPACING = Duration.ofMillis(4800); // 12.5 RPM (safe buffer for 15 RPM)
     private static final int DAILY_QUOTA_PER_KEY = 1450; // Safe buffer for 1500 RPD limit
+    private volatile long lastQuotaResetTime = System.currentTimeMillis();
+    private static final long QUOTA_RESET_INTERVAL_MS = 24 * 60 * 60 * 1000; // 24 hours
 
     public GeminiService(MeterRegistry meterRegistry) {
         this.meterRegistry = meterRegistry;
@@ -137,6 +139,9 @@ public class GeminiService implements LLMService {
             return Mono.error(new RuntimeException("No API keys available."));
         }
         
+        // Check if we need to reset daily quotas (every 24 hours)
+        checkAndResetDailyQuotas();
+        
         // Pick a key that: 1) hasn't hit daily quota, 2) has been idle for CALL_SPACING
         String currentKey = null;
         int keyIndex = -1;
@@ -176,6 +181,24 @@ public class GeminiService implements LLMService {
                 log.error("ALL {} keys exhausted daily quota ({} calls each). Total: {} calls today.",
                         apiKeys.length, DAILY_QUOTA_PER_KEY, 
                         keyDailyUsage.values().stream().mapToInt(java.util.concurrent.atomic.AtomicInteger::get).sum());
+                
+                // Calculate time until next reset (PST midnight = UTC-8)
+                long now = System.currentTimeMillis();
+                long timeSinceReset = now - lastQuotaResetTime;
+                long timeUntilReset = QUOTA_RESET_INTERVAL_MS - timeSinceReset;
+                
+                if (timeUntilReset > 0) {
+                    long hoursUntilReset = timeUntilReset / (60 * 60 * 1000);
+                    long minutesUntilReset = (timeUntilReset % (60 * 60 * 1000)) / (60 * 1000);
+                    
+                    log.warn("⏰ Waiting for quota reset... Time remaining: {}h {}m", hoursUntilReset, minutesUntilReset);
+                    log.warn("💤 System will auto-resume when quotas reset. Checkpoint saved.");
+                    
+                    // Wait and retry (will trigger quota reset check)
+                    return Mono.delay(Duration.ofMinutes(5))
+                               .flatMap(d -> attemptGenerate(query, 0)); // Reset attempt counter
+                }
+                
                 return Mono.error(new RuntimeException(
                         "Daily quota exhausted for all " + apiKeys.length + " keys. " +
                         "Total calls today: " + keyDailyUsage.values().stream()
@@ -300,5 +323,32 @@ public class GeminiService implements LLMService {
             log.error("Failed to parse Gemini response: {}", e.getMessage());
         }
         return null;
+    }
+    
+    /**
+     * Check if 24 hours have passed since last reset and reset all quotas
+     */
+    private void checkAndResetDailyQuotas() {
+        long now = System.currentTimeMillis();
+        long timeSinceReset = now - lastQuotaResetTime;
+        
+        if (timeSinceReset >= QUOTA_RESET_INTERVAL_MS) {
+            synchronized (apiKeys) {
+                // Double-check after acquiring lock
+                if (now - lastQuotaResetTime >= QUOTA_RESET_INTERVAL_MS) {
+                    int totalCallsBeforeReset = keyDailyUsage.values().stream()
+                            .mapToInt(java.util.concurrent.atomic.AtomicInteger::get).sum();
+                    
+                    // Reset all key quotas
+                    keyDailyUsage.values().forEach(counter -> counter.set(0));
+                    lastQuotaResetTime = now;
+                    
+                    log.info("🔄 Daily quota reset completed! All {} keys refreshed. Previous 24h total: {} calls",
+                            apiKeys.length, totalCallsBeforeReset);
+                    log.info("✅ New capacity available: ~{}RPM, ~{}RPD", 
+                            apiKeys.length * 12, apiKeys.length * 1450);
+                }
+            }
+        }
     }
 }
