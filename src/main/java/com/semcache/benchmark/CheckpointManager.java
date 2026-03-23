@@ -55,12 +55,23 @@ public class CheckpointManager {
         checkpoint.lastUpdateTime = System.currentTimeMillis();
         String filename = getCheckpointFilename(checkpoint.experimentId);
         try {
+            // Atomic write: temp file + rename
+            String tempFilename = filename + ".tmp";
             objectMapper.writerWithDefaultPrettyPrinter()
-                    .writeValue(new File(filename), checkpoint);
-            log.debug("Checkpoint saved: {} ({}/{} queries completed)", 
-                    checkpoint.experimentId, 
-                    checkpoint.completedQueryIndices.size(), 
-                    checkpoint.totalQueries);
+                    .writeValue(new File(tempFilename), checkpoint);
+            
+            // Atomic rename
+            File tempFile = new File(tempFilename);
+            File targetFile = new File(filename);
+            if (!tempFile.renameTo(targetFile)) {
+                log.error("Failed to rename checkpoint temp file to {}", filename);
+                tempFile.delete();
+            } else {
+                log.debug("Checkpoint saved: {} ({}/{} queries completed)", 
+                        checkpoint.experimentId, 
+                        checkpoint.completedQueryIndices.size(), 
+                        checkpoint.totalQueries);
+            }
         } catch (IOException e) {
             log.error("Failed to save checkpoint: {}", checkpoint.experimentId, e);
         }

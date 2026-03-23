@@ -17,6 +17,7 @@ import org.springframework.stereotype.Component;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Random;
+import java.util.Set;
 
 /**
  * Orchestrates a single experimental trial in the semantic cache benchmark.
@@ -277,6 +278,9 @@ public class BenchmarkRunner {
                                            CheckpointManager.Checkpoint checkpoint) {
         int testSize = testSet.size();
         List<QueryLog> queryLogs = java.util.Collections.synchronizedList(new ArrayList<>(testSize));
+        
+        // Use thread-safe set for checkpoint tracking
+        Set<Integer> completedIndices = java.util.Collections.synchronizedSet(checkpoint.completedQueryIndices);
 
         // M.6 Gold Standard: Zipfian Distribution Generator
         // Simulates realistic "Head/Tail" traffic where some queries are much more
@@ -315,7 +319,7 @@ public class BenchmarkRunner {
         long benchmarkStartTime = System.currentTimeMillis();
         queryIndices.parallelStream().forEach(index -> {
             // Skip if already completed (checkpoint resume)
-            if (checkpoint.completedQueryIndices.contains(index)) {
+            if (completedIndices.contains(index)) {
                 return;
             }
             
@@ -393,9 +397,9 @@ public class BenchmarkRunner {
 
             int done = progressCounter.incrementAndGet();
             
-            // Mark query as completed and save checkpoint (adaptive frequency)
-            checkpoint.completedQueryIndices.add(index);
-            int checkpointFrequency = done < 100 ? 5 : 50; // More frequent early, less later
+            // Mark query as completed and save checkpoint (thread-safe)
+            completedIndices.add(index);
+            int checkpointFrequency = done < 100 ? 5 : 50;
             if (done % checkpointFrequency == 0) {
                 checkpointManager.saveCheckpoint(checkpoint);
             }

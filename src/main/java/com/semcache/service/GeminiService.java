@@ -148,6 +148,11 @@ public class GeminiService implements LLMService {
             return Mono.error(new RuntimeException("No API keys available."));
         }
         
+        // Max retry limit: 100 attempts (prevents infinite loops)
+        if (attempt > 100) {
+            return Mono.error(new RuntimeException("Max retry attempts exceeded (100)"));
+        }
+        
         // Check if we need to reset daily quotas (every 24 hours)
         checkAndResetDailyQuotas();
         
@@ -271,7 +276,7 @@ public class GeminiService implements LLMService {
                         return attemptGenerate(query, attempt + 1);
                     }
                     
-                    // Network errors, timeouts, etc - RETRY FOREVER
+                    // Network errors, timeouts, etc - RETRY with exponential backoff
                     if (errorMsg.toLowerCase().contains("timeout") || 
                         errorMsg.toLowerCase().contains("connection") ||
                         errorMsg.toLowerCase().contains("network") ||
@@ -279,18 +284,23 @@ public class GeminiService implements LLMService {
                         e instanceof java.io.IOException) {
                         
                         llmErrorCounter.increment();
-                        log.warn("Network error (key {}): {}. Retrying in 10s...", finalKeyIndex, errorMsg);
                         
-                        // Wait 10 seconds and retry - NO FAILURE!
-                        return Mono.delay(Duration.ofSeconds(10))
-                                   .flatMap(d -> attemptGenerate(query, attempt));
+                        // Exponential backoff: 1s, 2s, 4s, 8s... max 60s
+                        long backoffMs = Math.min(1000L * (long) Math.pow(2, attempt % 6), 60000L);
+                        log.warn("Network error (key {}): {}. Retrying in {}ms...", 
+                                finalKeyIndex, errorMsg, backoffMs);
+                        
+                        return Mono.delay(Duration.ofMillis(backoffMs))
+                                   .flatMap(d -> attemptGenerate(query, attempt + 1));
                     }
                     
-                    // Other errors - log and retry
+                    // Other errors - log and retry with backoff
                     llmErrorCounter.increment();
-                    log.error("LLM API error (key {}): {}. Retrying in 5s...", finalKeyIndex, errorMsg);
+                    long backoffMs = Math.min(1000L * (long) Math.pow(2, attempt % 6), 60000L);
+                    log.error("LLM API error (key {}): {}. Retrying in {}ms...", 
+                            finalKeyIndex, errorMsg, backoffMs);
                     
-                    return Mono.delay(Duration.ofSeconds(5))
+                    return Mono.delay(Duration.ofMillis(backoffMs))
                                .flatMap(d -> attemptGenerate(query, attempt + 1));
                 });
     }
