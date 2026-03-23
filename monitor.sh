@@ -1,55 +1,45 @@
 #!/bin/bash
-# Real-time monitoring for background benchmark
-
-LOG_DIR="logs"
-PID_FILE="${LOG_DIR}/benchmark.pid"
-
-# Check if benchmark is running
-if [ ! -f "$PID_FILE" ]; then
-    echo "❌ No benchmark running"
-    echo ""
-    echo "Start with: bash run_background.sh"
-    exit 1
-fi
-
-PID=$(cat "$PID_FILE")
-if ! ps -p "$PID" > /dev/null 2>&1; then
-    echo "❌ Benchmark process not found (PID: $PID)"
-    rm -f "$PID_FILE"
-    exit 1
-fi
-
-# Find latest log file
-LATEST_LOG=$(ls -t ${LOG_DIR}/benchmark_*.log 2>/dev/null | head -1)
-
-if [ -z "$LATEST_LOG" ]; then
-    echo "❌ No log file found"
-    exit 1
-fi
+# Deney İzleme Scripti
 
 echo "╔════════════════════════════════════════════════════════════╗"
-echo "║              BENCHMARK MONITORING                          ║"
-echo "╠════════════════════════════════════════════════════════════╣"
-echo "║  PID: $PID"
-echo "║  Log: $LATEST_LOG"
+echo "║     SEMANTIC CACHE BENCHMARK - DURUM İZLEME               ║"
 echo "╚════════════════════════════════════════════════════════════╝"
 echo ""
-echo "📊 Live progress (Ctrl+C to exit monitoring):"
-echo ""
 
-# Monitor with colored output
-tail -f "$LATEST_LOG" | grep --line-buffered -E "Multi-key|Progress|Metrics computed|ERROR|WARN|completed|exhausted" | while read line; do
-    if echo "$line" | grep -q "ERROR"; then
-        echo "🔴 $line"
-    elif echo "$line" | grep -q "WARN"; then
-        echo "🟡 $line"
-    elif echo "$line" | grep -q "Progress"; then
-        echo "📈 $line"
-    elif echo "$line" | grep -q "Metrics computed"; then
-        echo "✅ $line"
-    elif echo "$line" | grep -q "Multi-key"; then
-        echo "🔑 $line"
-    else
-        echo "ℹ️  $line"
+# Java süreçlerini kontrol et
+JAVA_PROCS=$(ps aux | grep -E "semantic-cache-benchmark" | grep -v grep | wc -l | xargs)
+
+if [ "$JAVA_PROCS" -gt 0 ]; then
+    echo "✅ Deney çalışıyor ($JAVA_PROCS süreç aktif)"
+    echo ""
+    
+    # Son log satırları
+    echo "📊 Son Durum:"
+    echo "─────────────────────────────────────────────────────────────"
+    tail -15 logs/benchmark-current.log 2>/dev/null | grep -E "Progress|Phase|Metrics|Dataset|Strategy|Hit Rate|Latency|Cost|ERROR|WARNING" || echo "   Log henüz oluşmadı..."
+    echo "─────────────────────────────────────────────────────────────"
+    echo ""
+    
+    # Sonuç dosyaları
+    RESULT_COUNT=$(find results -name "*.json" 2>/dev/null | wc -l | xargs)
+    echo "📁 Tamamlanan Deneyler: $RESULT_COUNT"
+    
+    if [ "$RESULT_COUNT" -gt 0 ]; then
+        echo ""
+        echo "Son 5 sonuç:"
+        ls -lht results/*.json 2>/dev/null | head -5 | awk '{print "   " $9 " (" $5 ")"}'
     fi
-done
+    
+else
+    echo "⚠️  Deney çalışmıyor"
+    echo ""
+    echo "Başlatmak için:"
+    echo "   bash run_background.sh"
+fi
+
+echo ""
+echo "─────────────────────────────────────────────────────────────"
+echo "🔄 Canlı izleme: tail -f logs/benchmark-current.log"
+echo "📊 Sonuçlar: ls -lh results/"
+echo "🛑 Durdurmak: pkill -f semantic-cache-benchmark"
+echo "─────────────────────────────────────────────────────────────"
