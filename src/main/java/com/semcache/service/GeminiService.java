@@ -178,31 +178,25 @@ public class GeminiService implements LLMService {
                     .allMatch(usage -> usage.get() >= DAILY_QUOTA_PER_KEY);
             
             if (allExhausted) {
-                log.error("ALL {} keys exhausted daily quota ({} calls each). Total: {} calls today.",
-                        apiKeys.length, DAILY_QUOTA_PER_KEY, 
-                        keyDailyUsage.values().stream().mapToInt(java.util.concurrent.atomic.AtomicInteger::get).sum());
-                
                 // Calculate time until next reset (PST midnight = UTC-8)
                 long now = System.currentTimeMillis();
                 long timeSinceReset = now - lastQuotaResetTime;
                 long timeUntilReset = QUOTA_RESET_INTERVAL_MS - timeSinceReset;
                 
-                if (timeUntilReset > 0) {
-                    long hoursUntilReset = timeUntilReset / (60 * 60 * 1000);
-                    long minutesUntilReset = (timeUntilReset % (60 * 60 * 1000)) / (60 * 1000);
-                    
-                    log.warn("⏰ Waiting for quota reset... Time remaining: {}h {}m", hoursUntilReset, minutesUntilReset);
-                    log.warn("💤 System will auto-resume when quotas reset. Checkpoint saved.");
-                    
-                    // Wait and retry (will trigger quota reset check)
-                    return Mono.delay(Duration.ofMinutes(5))
-                               .flatMap(d -> attemptGenerate(query, 0)); // Reset attempt counter
-                }
+                long hoursUntilReset = timeUntilReset / (60 * 60 * 1000);
+                long minutesUntilReset = (timeUntilReset % (60 * 60 * 1000)) / (60 * 1000);
                 
-                return Mono.error(new RuntimeException(
-                        "Daily quota exhausted for all " + apiKeys.length + " keys. " +
-                        "Total calls today: " + keyDailyUsage.values().stream()
-                                .mapToInt(java.util.concurrent.atomic.AtomicInteger::get).sum()));
+                int totalCalls = keyDailyUsage.values().stream()
+                        .mapToInt(java.util.concurrent.atomic.AtomicInteger::get).sum();
+                
+                log.warn("⏰ ALL {} keys exhausted ({} total calls). Waiting for quota reset... Time remaining: {}h {}m", 
+                        apiKeys.length, totalCalls, hoursUntilReset, minutesUntilReset);
+                log.warn("💤 System will auto-resume when quotas reset. Checkpoint saved.");
+                
+                // Wait 5 minutes and retry (will trigger quota reset check)
+                // This creates an infinite loop until quotas reset - NO FAILURE!
+                return Mono.delay(Duration.ofMinutes(5))
+                           .flatMap(d -> attemptGenerate(query, 0)); // Reset attempt counter
             }
             
             // Otherwise just rate-limited, wait and retry
@@ -254,27 +248,39 @@ public class GeminiService implements LLMService {
                     if (errorMsg.contains("429") || errorMsg.toLowerCase().contains("quota") || 
                         errorMsg.toLowerCase().contains("resource_exhausted")) {
                         
-                        log.warn("Key {} hit quota/rate limit. Usage: {}/{}. Rotating... (Attempt {}/{})", 
-                                finalKeyIndex, keyDailyUsage.get(finalKey).get(), DAILY_QUOTA_PER_KEY,
-                                attempt + 1, apiKeys.length);
+                        log.warn("Key {} hit quota/rate limit. Usage: {}/{}. Rotating...", 
+                                finalKeyIndex, keyDailyUsage.get(finalKey).get(), DAILY_QUOTA_PER_KEY);
                         
                         // Mark this key as exhausted
                         keyDailyUsage.get(finalKey).set(DAILY_QUOTA_PER_KEY);
                         currentKeyIndex.incrementAndGet();
                         keyRotationCounter.increment();
                         
-                        if (attempt < apiKeys.length * 2) { // Allow more retries with multiple keys
-                            return attemptGenerate(query, attempt + 1);
-                        } else {
-                            log.error("Exhausted all retry attempts across {} keys.", apiKeys.length);
-                            return Mono.error(new RuntimeException(
-                                    "All keys exhausted after " + attempt + " attempts."));
-                        }
+                        // Retry with next key - NO LIMIT, will wait if all exhausted
+                        return attemptGenerate(query, attempt + 1);
                     }
                     
+                    // Network errors, timeouts, etc - RETRY FOREVER
+                    if (errorMsg.toLowerCase().contains("timeout") || 
+                        errorMsg.toLowerCase().contains("connection") ||
+                        errorMsg.toLowerCase().contains("network") ||
+                        e instanceof java.net.ConnectException ||
+                        e instanceof java.io.IOException) {
+                        
+                        llmErrorCounter.increment();
+                        log.warn("Network error (key {}): {}. Retrying in 10s...", finalKeyIndex, errorMsg);
+                        
+                        // Wait 10 seconds and retry - NO FAILURE!
+                        return Mono.delay(Duration.ofSeconds(10))
+                                   .flatMap(d -> attemptGenerate(query, attempt));
+                    }
+                    
+                    // Other errors - log and retry
                     llmErrorCounter.increment();
-                    log.error("LLM API error (key {}): {}", finalKeyIndex, errorMsg);
-                    return Mono.error(e);
+                    log.error("LLM API error (key {}): {}. Retrying in 5s...", finalKeyIndex, errorMsg);
+                    
+                    return Mono.delay(Duration.ofSeconds(5))
+                               .flatMap(d -> attemptGenerate(query, attempt + 1));
                 });
     }
 

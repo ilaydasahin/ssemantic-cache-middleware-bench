@@ -319,7 +319,13 @@ public class BenchmarkRunner {
             }
             
             DatasetRecord record = testSet.get(index);
-            long wallClockStart = System.nanoTime();
+            
+            // Retry loop - NEVER FAIL!
+            boolean success = false;
+            int retryCount = 0;
+            while (!success) {
+                try {
+                    long wallClockStart = System.nanoTime();
 
             // Select test query: paraphrase when available (stresses semantic path),
             // otherwise fall back to the original (tests exact-match path)
@@ -395,6 +401,21 @@ public class BenchmarkRunner {
             if (done % 100 == 0) {
                 log.info("Progress: {}/{} queries processed...", done, testSize);
             }
+            
+            success = true; // Mark as successful
+            
+                } catch (Exception ex) {
+                    retryCount++;
+                    log.error("Query {} failed (attempt {}): {}. Retrying in 5s...", 
+                            index, retryCount, ex.getMessage());
+                    try {
+                        Thread.sleep(5000);
+                    } catch (InterruptedException ie) {
+                        Thread.currentThread().interrupt();
+                    }
+                    // Loop continues - NEVER GIVE UP!
+                }
+            } // end while
         });
 
         log.info("Test phase complete: {} queries processed", testSet.size());
