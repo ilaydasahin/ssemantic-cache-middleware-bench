@@ -95,18 +95,47 @@ public class CheckpointManager {
         checkpoint.lastUpdateTime = System.currentTimeMillis();
         String filename = getCheckpointFilename(checkpoint.experimentId);
         try {
+            // Periodic cleanup: every 100 saves, clean up old checkpoints
+            if (checkpoint.completedQueryIndices.size() % 5000 == 0) {
+                cleanupOldCheckpoints();
+            }
+            
+            // Check disk space before save (require 500MB free)
+            File checkpointDir = new File(CHECKPOINT_DIR);
+            long freeSpaceMB = checkpointDir.getFreeSpace() / (1024 * 1024);
+            if (freeSpaceMB < 500) {
+                log.error("Insufficient disk space for checkpoint: {} MB free (require 500 MB)", freeSpaceMB);
+                // Try emergency cleanup
+                cleanupOldCheckpoints();
+                freeSpaceMB = checkpointDir.getFreeSpace() / (1024 * 1024);
+                if (freeSpaceMB < 500) {
+                    throw new IOException("Disk space critically low: " + freeSpaceMB + " MB");
+                }
+            }
+            
             // Atomic write: temp file + rename
             String tempFilename = filename + ".tmp";
             objectMapper.writerWithDefaultPrettyPrinter()
                     .writeValue(new File(tempFilename), checkpoint);
             
+            // Backup previous checkpoint before overwriting
+            File targetFile = new File(filename);
+            if (targetFile.exists()) {
+                File backupFile = new File(filename + ".backup");
+                if (!targetFile.renameTo(backupFile)) {
+                    log.warn("Failed to backup previous checkpoint");
+                }
+            }
+            
             // Atomic rename
             File tempFile = new File(tempFilename);
-            File targetFile = new File(filename);
             if (!tempFile.renameTo(targetFile)) {
                 log.error("Failed to rename checkpoint temp file to {}", filename);
                 tempFile.delete();
             } else {
+                // Delete backup after successful save
+                new File(filename + ".backup").delete();
+                
                 log.debug("Checkpoint saved: {} ({}/{} queries completed)", 
                         checkpoint.experimentId, 
                         checkpoint.completedQueryIndices.size(), 

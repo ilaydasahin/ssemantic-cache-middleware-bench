@@ -96,7 +96,9 @@ public class GeminiService implements LLMService {
         this.parallelLimiter = new Semaphore(Math.max(1, apiKeys.length));
 
         // Configure WebClient with timeouts to prevent hangs
-        io.netty.channel.ChannelOption channelOption = io.netty.channel.ChannelOption.CONNECT_TIMEOUT_MILLIS;
+        @SuppressWarnings("unchecked")
+        io.netty.channel.ChannelOption<Integer> channelOption = 
+                (io.netty.channel.ChannelOption<Integer>) io.netty.channel.ChannelOption.CONNECT_TIMEOUT_MILLIS;
         reactor.netty.http.client.HttpClient httpClient = reactor.netty.http.client.HttpClient.create()
                 .option(channelOption, 30000) // 30s connection timeout
                 .responseTimeout(Duration.ofSeconds(120)); // 120s response timeout (LLM can be slow)

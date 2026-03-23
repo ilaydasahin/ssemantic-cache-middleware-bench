@@ -136,10 +136,10 @@ public class OnnxEmbeddingService implements EmbeddingService {
         return ctx.timer.record(() -> {
             OrtSession session = null;
             try {
-                // Acquire session from pool with timeout
-                session = finalCtx.sessionPool.poll(30, java.util.concurrent.TimeUnit.SECONDS);
+                // Acquire session from pool with shorter timeout (10s instead of 30s)
+                session = finalCtx.sessionPool.poll(10, java.util.concurrent.TimeUnit.SECONDS);
                 if (session == null) {
-                    throw new RuntimeException("Failed to acquire ONNX session from pool (timeout)");
+                    throw new RuntimeException("Failed to acquire ONNX session from pool (timeout after 10s)");
                 }
                 return performInferenceWithSession(text, finalCtx, session);
             } catch (InterruptedException e) {

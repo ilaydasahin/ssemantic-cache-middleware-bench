@@ -46,7 +46,8 @@ public class ParallelBenchmarkRunner {
         
         // Multiple experiments, run in parallel
         log.info("🚀 Starting {} experiments in parallel...", configs.size());
-        ExecutorService executor = Executors.newFixedThreadPool(configs.size());
+        ExecutorService executor = Executors.newFixedThreadPool(
+                Math.min(configs.size(), Runtime.getRuntime().availableProcessors()));
         
         try {
             CompletableFuture<?>[] futures = configs.stream()
@@ -71,6 +72,17 @@ public class ParallelBenchmarkRunner {
             return false;
         } finally {
             executor.shutdown();
+            try {
+                if (!executor.awaitTermination(60, java.util.concurrent.TimeUnit.SECONDS)) {
+                    executor.shutdownNow();
+                    if (!executor.awaitTermination(60, java.util.concurrent.TimeUnit.SECONDS)) {
+                        log.error("Executor did not terminate");
+                    }
+                }
+            } catch (InterruptedException ie) {
+                executor.shutdownNow();
+                Thread.currentThread().interrupt();
+            }
         }
     }
 }

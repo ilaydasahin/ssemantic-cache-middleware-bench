@@ -75,6 +75,14 @@ echo ""
     # Export keys for Maven
     export GEMINI_API_KEYS
     
+    # Set JVM options for 450K query experiment
+    export MAVEN_OPTS="-Xmx8g -Xms4g -XX:+UseG1GC -XX:MaxGCPauseMillis=200 -XX:+HeapDumpOnOutOfMemoryError -XX:HeapDumpPath=${LOG_DIR}/heap_dump.hprof"
+    
+    echo "JVM Configuration:" >> "$LOG_FILE"
+    echo "  Heap: 4GB initial, 8GB max" >> "$LOG_FILE"
+    echo "  GC: G1 with 200ms pause target" >> "$LOG_FILE"
+    echo "" >> "$LOG_FILE"
+    
     # Run benchmark suite
     bash run_full_benchmark_suite.sh >> "$LOG_FILE" 2>&1
     

@@ -22,6 +22,9 @@ echo ""
 echo "🧪 Testing with 10 queries (should take ~30 seconds)..."
 echo ""
 
+# Set JVM options
+export MAVEN_OPTS="-Xmx2g -Xms1g -XX:+UseG1GC"
+
 mvn spring-boot:run \
   -Dspring-boot.run.profiles=benchmark \
   -Dspring-boot.run.arguments="--llm.api-keys=${GEMINI_API_KEYS}" \

@@ -42,8 +42,10 @@ public class ResultComparator {
             File previousFile = previousResults.get(0);
             log.info("📊 Comparing with previous result: {}", previousFile.getName());
             
-            Map<String, Object> current = objectMapper.readValue(currentFile, Map.class);
-            Map<String, Object> previous = objectMapper.readValue(previousFile, Map.class);
+            Map<String, Object> current = objectMapper.readValue(currentFile, 
+                    new com.fasterxml.jackson.core.type.TypeReference<Map<String, Object>>() {});
+            Map<String, Object> previous = objectMapper.readValue(previousFile, 
+                    new com.fasterxml.jackson.core.type.TypeReference<Map<String, Object>>() {});
             
             generateComparisonReport(current, previous);
             

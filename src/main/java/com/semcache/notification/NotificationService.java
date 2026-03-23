@@ -26,7 +26,21 @@ public class NotificationService {
     @Value("${notification.enabled:false}")
     private boolean enabled;
     
-    private final WebClient webClient = WebClient.builder().build();
+    private final WebClient webClient;
+    
+    public NotificationService() {
+        // Configure WebClient with timeouts for notification webhooks
+        @SuppressWarnings("unchecked")
+        io.netty.channel.ChannelOption<Integer> channelOption = 
+                (io.netty.channel.ChannelOption<Integer>) io.netty.channel.ChannelOption.CONNECT_TIMEOUT_MILLIS;
+        reactor.netty.http.client.HttpClient httpClient = reactor.netty.http.client.HttpClient.create()
+                .option(channelOption, 10000) // 10s connection timeout
+                .responseTimeout(java.time.Duration.ofSeconds(30)); // 30s response timeout
+        
+        this.webClient = WebClient.builder()
+                .clientConnector(new org.springframework.http.client.reactive.ReactorClientHttpConnector(httpClient))
+                .build();
+    }
     
     public void notifyExperimentComplete(String experimentId, String dataset, 
                                         double hitRate, double p99Latency, 
@@ -68,7 +82,7 @@ public class NotificationService {
     
     private void sendSlackNotification(String message) {
         try {
-            Map<String, Object> payload = Map.of("text", message);
+            Map<String, String> payload = Map.of("text", message);
             webClient.post()
                     .uri(slackWebhook)
                     .bodyValue(payload)
@@ -85,7 +99,7 @@ public class NotificationService {
     
     private void sendEmailNotification(String message) {
         try {
-            Map<String, Object> payload = Map.of(
+            Map<String, String> payload = Map.of(
                     "subject", "Experiment Complete",
                     "body", message
             );

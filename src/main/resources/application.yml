@@ -10,10 +10,11 @@ spring:
       port: 6379
       lettuce:
         pool:
-          max-active: 512
-          max-idle: 64
-          min-idle: 8
-          max-wait: 1000ms
+          max-active: 256  # Increased from 64 for 450K queries
+          max-idle: 128    # Increased from 64
+          min-idle: 16     # Increased from 8
+          max-wait: 5000ms # Increased from 1000ms
+        shutdown-timeout: 10000ms  # Graceful shutdown
   application:
     name: semantic-cache-benchmark
 

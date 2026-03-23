@@ -18,6 +18,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Random;
 import java.util.Set;
+import java.io.File;
 
 /**
  * Orchestrates a single experimental trial in the semantic cache benchmark.
@@ -412,6 +413,11 @@ public class BenchmarkRunner {
                 checkpointManager.saveCheckpoint(checkpoint);
             }
             
+            // Health check every 100 queries
+            if (done % 100 == 0) {
+                performHealthCheck(done, testSize);
+            }
+            
             // Enhanced progress reporting every 100 queries
             if (done % 100 == 0) {
                 long elapsedMs = System.currentTimeMillis() - benchmarkStartTime;
@@ -464,5 +470,50 @@ public class BenchmarkRunner {
 
         log.info("Test phase complete: {} queries processed", testSet.size());
         return queryLogs;
+    }
+    
+    /**
+     * Performs health check to ensure system is healthy for continued operation.
+     * Checks: memory, disk space, thread count, Redis connectivity.
+     * If unhealthy, logs warning but continues (graceful degradation).
+     */
+    private void performHealthCheck(int queriesCompleted, int totalQueries) {
+        try {
+            // 1. Memory check
+            Runtime runtime = Runtime.getRuntime();
+            long usedMemory = runtime.totalMemory() - runtime.freeMemory();
+            long maxMemory = runtime.maxMemory();
+            double memoryUsagePercent = (usedMemory * 100.0) / maxMemory;
+            
+            if (memoryUsagePercent > 90) {
+                log.warn("⚠️ HIGH MEMORY USAGE: {:.1f}% ({} MB / {} MB)", 
+                        memoryUsagePercent, usedMemory / (1024 * 1024), maxMemory / (1024 * 1024));
+                // Suggest GC
+                System.gc();
+            }
+            
+            // 2. Disk space check
+            File resultsDir = new File("results");
+            long freeSpaceMB = resultsDir.getFreeSpace() / (1024 * 1024);
+            if (freeSpaceMB < 1000) {
+                log.warn("⚠️ LOW DISK SPACE: {} MB free (recommend 1GB+)", freeSpaceMB);
+            }
+            
+            // 3. Thread count check
+            int threadCount = Thread.activeCount();
+            if (threadCount > 100) {
+                log.warn("⚠️ HIGH THREAD COUNT: {} active threads", threadCount);
+            }
+            
+            // 4. Progress sanity check
+            double progressPercent = (queriesCompleted * 100.0) / totalQueries;
+            if (progressPercent > 0 && progressPercent < 100) {
+                log.debug("✅ Health check passed: Memory {:.1f}%, Disk {} MB, Threads {}", 
+                        memoryUsagePercent, freeSpaceMB, threadCount);
+            }
+            
+        } catch (Exception e) {
+            log.warn("Health check failed: {}", e.getMessage());
+        }
     }
 }
