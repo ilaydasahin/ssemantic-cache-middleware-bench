@@ -13,7 +13,9 @@ mvn clean package -DskipTests
 java -Xmx2G -Xms1G -jar target/semantic-cache-benchmark-1.0.0.jar \
   --spring.profiles.active=benchmark \
   --benchmark.current-dataset=msmarco \
-  --benchmark.sample-size=10
+  --benchmark.current-seed=42 \
+  --benchmark.sample-size=10 \
+  --benchmark.output-file=results/test_single_key.csv
 
 echo ""
 echo "✅ Test complete. Check logs/benchmark-current.log for details"
