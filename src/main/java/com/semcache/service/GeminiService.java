@@ -125,8 +125,9 @@ public class GeminiService implements LLMService {
                     "Invalid max output tokens: " + maxOutputTokens + " (must be in (0, 8192])");
         }
 
-        // Parallel permits = number of keys (20 keys = 20 concurrent requests)
-        this.parallelLimiter = new Semaphore(Math.max(1, apiKeys.length));
+        // Parallel permits = max 10 concurrent requests (RAM optimization for 16GB systems)
+        // With 162 keys, we still rotate through all keys, just limit concurrent threads
+        this.parallelLimiter = new Semaphore(Math.min(10, Math.max(1, apiKeys.length)));
 
         // Configure WebClient with timeouts to prevent hangs
         @SuppressWarnings("unchecked")
@@ -223,7 +224,7 @@ public class GeminiService implements LLMService {
                     currentKey = k;
                     keyIndex = idx;
                     lastKeyCallTime.get(k).set(System.currentTimeMillis());
-                    keyDailyUsage.get(k).incrementAndGet();
+                    // DON'T increment quota here - wait for successful API call
                     break;
                 }
             }
@@ -291,6 +292,9 @@ public class GeminiService implements LLMService {
                     long durationMs = (System.nanoTime() - start) / 1_000_000;
                     llmTimer.record(Duration.ofMillis(durationMs));
                     
+                    // ✅ SUCCESS - NOW increment quota
+                    keyDailyUsage.get(finalKey).incrementAndGet();
+                    
                     // Log progress every 100 calls
                     int totalCalls = keyDailyUsage.values().stream()
                             .mapToInt(java.util.concurrent.atomic.AtomicInteger::get).sum();
@@ -308,11 +312,17 @@ public class GeminiService implements LLMService {
                     if (errorMsg.contains("429") || errorMsg.toLowerCase().contains("quota") || 
                         errorMsg.toLowerCase().contains("resource_exhausted")) {
                         
-                        log.warn("Key {} hit quota/rate limit. Usage: {}/{}. Rotating...", 
-                                finalKeyIndex, keyDailyUsage.get(finalKey).get(), DAILY_QUOTA_PER_KEY);
+                        int currentUsage = keyDailyUsage.get(finalKey).get();
+                        log.warn("⚠️ Key {} hit 429/quota error. Current usage: {}/{}. Error: {}", 
+                                finalKeyIndex, currentUsage, DAILY_QUOTA_PER_KEY, errorMsg);
                         
-                        // Mark this key as exhausted
-                        keyDailyUsage.get(finalKey).set(DAILY_QUOTA_PER_KEY);
+                        // If usage is near limit, mark as exhausted
+                        if (currentUsage >= DAILY_QUOTA_PER_KEY - 10) {
+                            log.warn("Key {} usage near limit, marking as exhausted", finalKeyIndex);
+                            keyDailyUsage.get(finalKey).set(DAILY_QUOTA_PER_KEY);
+                        }
+                        
+                        // Rotate to next key
                         currentKeyIndex.incrementAndGet();
                         keyRotationCounter.increment();
                         
@@ -331,18 +341,18 @@ public class GeminiService implements LLMService {
                         
                         // Exponential backoff: 1s, 2s, 4s, 8s... max 60s
                         long backoffMs = Math.min(1000L * (long) Math.pow(2, attempt % 6), 60000L);
-                        log.warn("Network error (key {}): {}. Retrying in {}ms...", 
+                        log.warn("🌐 Network error (key {}): {}. Retrying in {}ms...", 
                                 finalKeyIndex, errorMsg, backoffMs);
                         
                         return Mono.delay(Duration.ofMillis(backoffMs))
                                    .flatMap(d -> attemptGenerate(query, attempt + 1));
                     }
                     
-                    // Other errors - log and retry with backoff
+                    // Other errors - log FULL error and retry with backoff
                     llmErrorCounter.increment();
                     long backoffMs = Math.min(1000L * (long) Math.pow(2, attempt % 6), 60000L);
-                    log.error("LLM API error (key {}): {}. Retrying in {}ms...", 
-                            finalKeyIndex, errorMsg, backoffMs);
+                    log.error("❌ LLM API error (key {}): {}. Full error: {}. Retrying in {}ms...", 
+                            finalKeyIndex, errorMsg, e.toString(), backoffMs);
                     
                     return Mono.delay(Duration.ofMillis(backoffMs))
                                .flatMap(d -> attemptGenerate(query, attempt + 1));

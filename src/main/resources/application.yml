@@ -10,11 +10,11 @@ spring:
       port: 6379
       lettuce:
         pool:
-          max-active: 512  # Increased for 450K queries with parallel processing
-          max-idle: 256    # Increased to handle burst traffic
-          min-idle: 32     # Increased baseline
-          max-wait: 10000ms # Increased to 10s for heavy load
-        shutdown-timeout: 10000ms  # Graceful shutdown
+          max-active: 50   # Reduced for 16GB RAM (was 512)
+          max-idle: 25     # Reduced (was 256)
+          min-idle: 10     # Reduced (was 32)
+          max-wait: 10000ms
+        shutdown-timeout: 10000ms
       timeout: 5000ms      # Connection timeout
       connect-timeout: 5000ms  # Explicit connect timeout
   application:
