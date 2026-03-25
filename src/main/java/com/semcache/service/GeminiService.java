@@ -313,14 +313,11 @@ public class GeminiService implements LLMService {
                         errorMsg.toLowerCase().contains("resource_exhausted")) {
                         
                         int currentUsage = keyDailyUsage.get(finalKey).get();
-                        log.warn("⚠️ Key {} hit 429/quota error. Current usage: {}/{}. Error: {}", 
-                                finalKeyIndex, currentUsage, DAILY_QUOTA_PER_KEY, errorMsg);
+                        log.warn("⚠️ Key {} hit 429/quota error. Current usage: {}/{}. Marking as exhausted.", 
+                                finalKeyIndex, currentUsage, DAILY_QUOTA_PER_KEY);
                         
-                        // If usage is near limit, mark as exhausted
-                        if (currentUsage >= DAILY_QUOTA_PER_KEY - 10) {
-                            log.warn("Key {} usage near limit, marking as exhausted", finalKeyIndex);
-                            keyDailyUsage.get(finalKey).set(DAILY_QUOTA_PER_KEY);
-                        }
+                        // Mark key as exhausted (429 means quota is done)
+                        keyDailyUsage.get(finalKey).set(DAILY_QUOTA_PER_KEY);
                         
                         // Rotate to next key
                         currentKeyIndex.incrementAndGet();
