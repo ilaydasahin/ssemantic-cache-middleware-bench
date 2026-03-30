@@ -1,20 +1,20 @@
-# Semantic Cache Benchmark
+# Semantic Cache Benchmark - Ollama Edition
 
-A production-grade semantic caching middleware for LLM API calls in microservice architectures, designed for reproducible academic research.
+A production-grade semantic caching middleware for LLM API calls, now with **FREE local Ollama support**!
 
 ## Overview
 
-This project implements a semantic cache that uses embedding similarity to serve cached LLM responses for semantically equivalent queries, reducing API costs and latency. The system is built for rigorous benchmarking and evaluation in academic publications.
+This project implements a semantic cache that uses embedding similarity to serve cached LLM responses for semantically equivalent queries. Now runs completely FREE with local Ollama models - no API keys, no rate limits, no costs!
 
 ## Key Features
 
-- **Multiple Lookup Strategies**: Semantic (HNSW/brute-force), Exact-match, Hybrid cascade, Middleware baseline
+- **FREE Local LLM**: Ollama integration - no API keys, unlimited queries
+- **Multiple Lookup Strategies**: Semantic (HNSW/brute-force), Exact-match, Hybrid cascade
 - **ONNX-based Embeddings**: Local CPU inference with MiniLM, MPNet, and TinyBERT models
 - **Thread-safe Session Pooling**: Concurrent ONNX inference without contention
 - **Redis 8 Integration**: Native vectorset support (VADD/VSIM) for HNSW-based ANN search
-- **Background LFU Eviction**: Fine-grained locking to minimize p99 latency jitter
 - **Comprehensive Metrics**: Hit rate, latency percentiles, cost savings, memory usage
-- **Reproducible Experiments**: Deterministic seeding, SHA-256 dataset fingerprinting
+- **16 GB RAM Optimized**: Efficient memory usage for consumer hardware
 
 ## Architecture
 
@@ -47,28 +47,20 @@ This project implements a semantic cache that uses embedding similarity to serve
 
 ## Quick Start
 
-### 0. Setup API Keys (20 Keys for Free Tier)
-
-For free tier experiments with 20 Gemini keys (~29,000 calls/day):
+### 1. Install Ollama (5 minutes)
 
 ```bash
-# Set environment variable with your 20 keys
-export GEMINI_API_KEYS="key1,key2,key3,...,key20"
+# Install Ollama
+curl -fsSL https://ollama.com/install.sh | sh
 
-# Or create application-local.yml (gitignored)
-cat > src/main/resources/application-local.yml << EOF
-llm:
-  api-keys: "key1,key2,key3,...,key20"
-EOF
+# Start Ollama
+ollama serve &
+
+# Download model (Llama 3.2 recommended for 16 GB RAM)
+ollama pull llama3.2
 ```
 
-**See [MULTI_KEY_SETUP.md](MULTI_KEY_SETUP.md) for detailed guide on:**
-- Getting 20 free API keys
-- Quota management (1,500 RPD per key = 29,000 total)
-- Automatic key rotation and failover
-- Cost estimation and best practices
-
-### 1. Fetch Embedding Models
+### 2. Fetch Embedding Models
 
 ```bash
 bash scripts/fetch_embedding_assets.sh
@@ -76,7 +68,7 @@ bash scripts/fetch_embedding_assets.sh
 
 This downloads ONNX models for MiniLM, MPNet, and TinyBERT.
 
-### 2. Prepare Datasets
+### 3. Prepare Datasets
 
 ```bash
 cd scripts
@@ -86,57 +78,70 @@ python prepare_datasets.py
 
 Generates paraphrased versions of MS MARCO, Natural Questions, and Quora Question Pairs.
 
-### 3. Run Benchmark
+### 4. Run Quick Test (5-10 minutes)
 
 ```bash
-# Single experiment
-mvn spring-boot:run -Dspring-boot.run.profiles=benchmark,benchmark-mock \
-  -Dbenchmark.current-dataset=msmarco \
-  -Dbenchmark.current-seed=42 \
-  -Dbenchmark.output-file=results/test.json
-
-# Full benchmark suite
-bash run_full_benchmark_suite.sh
+./run_ollama_test.sh
 ```
 
-### 4. Analyze Results
+### 5. Run Full Benchmark (2-4 hours)
 
 ```bash
-cd scripts
-python analyze_results.py ../results/
-python visualize_results.py ../results/
+./run_ollama_full_benchmark.sh
 ```
+
+## Model Options (16 GB RAM)
+
+| Model | Size | RAM | Speed | Quality | Command |
+|-------|------|-----|-------|---------|---------|
+| Gemma2:2b | 1.6 GB | 2 GB | ⚡⚡⚡ | ⭐⭐ | `ollama pull gemma2:2b` |
+| Phi-3 | 2.3 GB | 3 GB | ⚡⚡⚡ | ⭐⭐⭐ | `ollama pull phi3` |
+| Llama 3.2 | 2 GB | 4 GB | ⚡⚡ | ⭐⭐⭐⭐ | `ollama pull llama3.2` ✅ |
+| Mistral | 4.1 GB | 5 GB | ⚡ | ⭐⭐⭐⭐ | `ollama pull mistral` |
+
+**Recommended:** Llama 3.2 (best balance for 16 GB RAM)
 
 ## Configuration
 
 Key parameters in `src/main/resources/application.yml`:
 
 ```yaml
+llm:
+  ollama:
+    url: http://localhost:11434
+    model: llama3.2  # or phi3, mistral, gemma2:2b
+    temperature: 0.0
+    max-tokens: 1024
+
 cache:
-  similarity-threshold: 0.90    # Cosine similarity threshold (θ)
-  hnsw-enabled: true            # Use Redis HNSW vs brute-force
-  strategy: SEMANTIC            # SEMANTIC | HYBRID | EXACT_MATCH | MIDDLEWARE_BASELINE
-  max-entries: 50000            # Cache capacity
-  ttl-seconds: 86400            # Entry TTL (24 hours)
+  similarity-threshold: 0.90
+  hnsw-enabled: true
+  strategy: SEMANTIC
+  max-entries: 10000  # Reduced for 16 GB RAM
 
 embedding:
-  model-name: minilm           # minilm | mpnet | tinybert
+  model-name: minilm  # or mpnet, tinybert
 
 benchmark:
-  warmup-ratio: 0.30           # Fraction of dataset for cache pre-population
-  zipfian-skew: 0.0            # 0.0 = uniform, 1.0 = realistic skew
-  noise-probability: 0.0       # Adversarial noise injection [0,1]
-  ttl-seconds: 86400           # TTL for benchmark runs
+  warmup-ratio: 0.30
+  parallel-threads: 4  # Safe for 16 GB RAM
 ```
 
-## Experiment Scripts
+## Available Scripts
 
-- `run_baseline_comparison.sh` - Compare semantic vs exact-match vs no-cache
-- `run_convergence_study.sh` - Threshold sweep (0.80, 0.85, 0.90, 0.95)
-- `run_hybrid_comparison.sh` - Hybrid cascade vs single-model strategies
-- `run_cache_size_study.sh` - Capacity scaling (1K, 5K, 10K, 50K entries)
-- `run_throughput_test.sh` - Concurrent user load (50, 100, 500, 1000)
-- `run_eviction_stress_test.sh` - Heavy churn p99 latency validation
+```bash
+# Quick test (5-10 minutes)
+./run_ollama_test.sh
+
+# Full benchmark (2-4 hours)
+./run_ollama_full_benchmark.sh
+
+# Clean all old results
+./clean_all.sh
+
+# Test with different model
+OLLAMA_MODEL=phi3 ./run_ollama_test.sh
+```
 
 ## Performance Optimizations
 
@@ -161,11 +166,16 @@ benchmark:
 # Unit tests
 mvn test
 
-# Compile only (no tests)
+# Compile
 mvn compile
 
-# Package
-mvn package -DskipTests
+# Quick test with Ollama
+./run_ollama_test.sh
+
+# Mock test (no LLM needed)
+mvn spring-boot:run -Dspring-boot.run.profiles=benchmark,benchmark-mock \
+  -Dbenchmark.current-dataset=msmarco \
+  -Dbenchmark.current-seed=42
 ```
 
 ## Project Structure
@@ -220,24 +230,41 @@ Results include full `ExperimentConfig` metadata for independent replication.
 
 ## Troubleshooting
 
-### Redis Connection Failed
+### Ollama Connection Failed
 ```
-Redis vectorset not available. HNSW phase will be skipped (local-only mode).
+❌ Ollama bağlantısı başarısız!
 ```
-**Solution**: Start Redis 8.x or set `cache.hnsw-enabled: false` for brute-force mode.
+**Solution**: Start Ollama with `ollama serve &`
 
-### ONNX Model Not Found
+### Model Not Found
 ```
-Failed to load model minilm: models/all-MiniLM-L6-v2/model.onnx (No such file)
+⚠️ Model bulunamadı: llama3.2
 ```
-**Solution**: Run `bash scripts/fetch_embedding_assets.sh`
+**Solution**: Download model with `ollama pull llama3.2`
 
 ### Out of Memory
 ```
 java.lang.OutOfMemoryError: Java heap space
 ```
-**Solution**: Increase heap size: `export MAVEN_OPTS="-Xmx4g"`
+**Solution**: 
+- Use smaller model: `ollama pull gemma2:2b`
+- Reduce cache size: `-Dcache.max-entries=5000`
+- Increase heap: `export MAVEN_OPTS="-Xmx8g"`
+
+### Redis Connection Failed
+```
+Redis vectorset not available. HNSW phase will be skipped.
+```
+**Solution**: Start Redis 8.x or set `cache.hnsw-enabled: false`
+
+## Benefits
+
+- ✅ **FREE**: No API costs, no rate limits
+- ✅ **Private**: All data stays local
+- ✅ **Unlimited**: No query limits
+- ✅ **Offline**: Works without internet (after model download)
+- ✅ **16 GB RAM**: Optimized for consumer hardware
 
 ## Contact
 
-For questions or issues, please open a GitHub issue or contact [your email].
+For questions or issues, please open a GitHub issue.

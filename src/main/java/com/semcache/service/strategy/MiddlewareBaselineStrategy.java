@@ -5,8 +5,6 @@ import com.semcache.service.CacheContext;
 import com.semcache.service.CacheLookupStrategy;
 import com.semcache.service.EmbeddingService;
 import com.semcache.service.RedisSearchService;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 
 /**
  * Simulates middleware-based semantic caches (e.g. LangChain/GPTCache).
@@ -16,8 +14,6 @@ import org.slf4j.LoggerFactory;
  * to the standard semantic lookup.
  */
 public class MiddlewareBaselineStrategy implements CacheLookupStrategy {
-
-    private static final Logger log = LoggerFactory.getLogger(MiddlewareBaselineStrategy.class);
 
     private final SemanticStrategy delegate;
 

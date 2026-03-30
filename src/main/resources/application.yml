@@ -80,14 +80,24 @@ embedding:
   max-length: 256
 
 # ============================================
-# LLM Configuration (Gemini API)
+# LLM Configuration
 # ============================================
 llm:
-  provider: gemini
+  # Provider: gemini (API) veya ollama (yerel)
+  provider: ollama
+  
+  # Gemini API ayarları (provider: gemini için)
   model: gemini-2.5-flash
   temperature: 0.0
   max-output-tokens: 1024
   api-keys: ${GEMINI_API_KEYS:REPLACE_ME}
+  
+  # Ollama yerel model ayarları (provider: ollama için)
+  ollama:
+    url: http://localhost:11434
+    model: llama3.2  # Seçenekler: llama3.2, phi3, mistral, gemma2:2b
+    temperature: 0.0
+    max-tokens: 1024
 
 # ============================================
 # Benchmark Configuration

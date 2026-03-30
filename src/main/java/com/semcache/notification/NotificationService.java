@@ -30,9 +30,7 @@ public class NotificationService {
     
     public NotificationService() {
         // Configure WebClient with timeouts for notification webhooks
-        @SuppressWarnings("unchecked")
-        io.netty.channel.ChannelOption<Integer> channelOption = 
-                (io.netty.channel.ChannelOption<Integer>) io.netty.channel.ChannelOption.CONNECT_TIMEOUT_MILLIS;
+        io.netty.channel.ChannelOption<Integer> channelOption = io.netty.channel.ChannelOption.CONNECT_TIMEOUT_MILLIS;
         reactor.netty.http.client.HttpClient httpClient = reactor.netty.http.client.HttpClient.create()
                 .option(channelOption, 10000) // 10s connection timeout
                 .responseTimeout(java.time.Duration.ofSeconds(30)); // 30s response timeout

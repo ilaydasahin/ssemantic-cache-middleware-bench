@@ -340,6 +340,7 @@ public class BenchmarkRunner {
         // TURBO MODE: Parallel processing with custom ForkJoinPool to prevent thread exhaustion
         // Default ForkJoinPool can cause issues with 450K queries - use bounded pool
         int parallelism = Math.min(Runtime.getRuntime().availableProcessors() * 2, MAX_THREAD_POOL_SIZE);
+        @SuppressWarnings("resource") // Closed in finally block
         java.util.concurrent.ForkJoinPool customThreadPool = new java.util.concurrent.ForkJoinPool(parallelism);
         
         java.util.concurrent.atomic.AtomicInteger progressCounter = new java.util.concurrent.atomic.AtomicInteger(0);

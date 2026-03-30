@@ -41,12 +41,6 @@ import java.util.concurrent.locks.ReentrantReadWriteLock;
 public class SemanticCacheService {
 
     private static final Logger log = LoggerFactory.getLogger(SemanticCacheService.class);
-    
-    // Configuration constants (extracted from magic numbers)
-    private static final double EVICTION_THRESHOLD = 0.95; // Start eviction at 95% capacity
-    private static final double EVICTION_TARGET = 0.05; // Evict 5% of entries
-    private static final int EVICTION_BATCH_SIZE = 50; // Process 50 entries per batch
-    private static final long EVICTION_SCHEDULE_INTERVAL_MS = 1000; // Check every 1 second
 
     private final CacheProperties cacheProperties;
     private final EmbeddingService embeddingService;

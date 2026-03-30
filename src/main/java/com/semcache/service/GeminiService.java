@@ -26,7 +26,7 @@ import java.util.Map;
  * requirement per M.8).
  */
 @Service
-@Profile("!benchmark-mock")
+@Profile("gemini")
 public class GeminiService implements LLMService {
 
     private static final Logger log = LoggerFactory.getLogger(GeminiService.class);
@@ -36,9 +36,6 @@ public class GeminiService implements LLMService {
     private static final long CALL_SPACING_MS = 4800; // 12.5 RPM (safe buffer for 15 RPM)
     private static final int DAILY_QUOTA_PER_KEY = 1450; // Safe buffer for 1500 RPD limit
     private static final long QUOTA_RESET_INTERVAL_MS = 24 * 60 * 60 * 1000; // 24 hours
-    private static final int MAX_RETRY_ATTEMPTS = 100;
-    private static final long MAX_BACKOFF_MS = 60000; // 60 seconds
-    private static final long QUOTA_CHECK_INTERVAL_MS = 5 * 60 * 1000; // 5 minutes
 
     @Value("${llm.api-keys:}")
     private String apiKeysString;
@@ -130,9 +127,7 @@ public class GeminiService implements LLMService {
         this.parallelLimiter = new Semaphore(Math.min(10, Math.max(1, apiKeys.length)));
 
         // Configure WebClient with timeouts to prevent hangs
-        @SuppressWarnings("unchecked")
-        io.netty.channel.ChannelOption<Integer> channelOption = 
-                (io.netty.channel.ChannelOption<Integer>) io.netty.channel.ChannelOption.CONNECT_TIMEOUT_MILLIS;
+        io.netty.channel.ChannelOption<Integer> channelOption = io.netty.channel.ChannelOption.CONNECT_TIMEOUT_MILLIS;
         reactor.netty.http.client.HttpClient httpClient = reactor.netty.http.client.HttpClient.create()
                 .option(channelOption, 30000) // 30s connection timeout
                 .responseTimeout(Duration.ofSeconds(120)); // 120s response timeout (LLM can be slow)
