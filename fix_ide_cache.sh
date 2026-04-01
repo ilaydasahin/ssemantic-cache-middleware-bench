@@ -22,7 +22,8 @@ echo "✅ Target temizlendi"
 echo "3️⃣ IDE cache dosyaları temizleme..."
 rm -rf .vscode/.cache 2>/dev/null
 rm -rf .idea/ 2>/dev/null
-rm -rf *.iml 2>/dev/null
+find . -name "*.iml" -delete 2>/dev/null
+rm -rf .classpath .project .settings/ .factorypath 2>/dev/null
 echo "✅ IDE cache temizlendi"
 
 # Yeniden compile
@@ -30,14 +31,26 @@ echo "4️⃣ Yeniden compile..."
 mvn compile -q
 echo "✅ Compile tamamlandı"
 
+# VS Code settings oluştur
+echo "5️⃣ VS Code ayarları güncelleniyor..."
+mkdir -p .vscode
+cat > .vscode/settings.json << 'EOF'
+{
+  "java.configuration.updateBuildConfiguration": "automatic",
+  "java.compile.nullAnalysis.mode": "automatic",
+  "java.saveActions.organizeImports": true
+}
+EOF
+echo "✅ VS Code ayarları güncellendi"
+
 echo ""
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 echo "🎉 IDE CACHE TEMİZLENDİ!"
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 echo ""
 echo "Şimdi yapmanız gerekenler:"
-echo "1. IDE'yi kapatın (VS Code / IntelliJ)"
-echo "2. IDE'yi yeniden açın"
-echo "3. Workspace'i reload edin"
+echo "1. Kiro'yu yeniden yükleyin (Cmd+R veya Ctrl+R)"
+echo "2. Veya tarayıcı sekmesini kapatıp yeniden açın"
 echo ""
 echo "Problemler kaybolmalı! ✅"
+

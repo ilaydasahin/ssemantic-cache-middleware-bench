@@ -24,18 +24,21 @@ public class LocalVectorIndex {
     private final LongAdder totalSearchTimeNs = new LongAdder();
     private final LongAdder searchCount = new LongAdder();
 
+    @Deprecated(since = "2.1", forRemoval = true)
     public void add(String id, float[] vector, String query, String response) {
         vectorStore.put(id, vector);
         idToResponse.put(id, response);
         idToQuery.put(id, query);
     }
 
+    @Deprecated(since = "2.1", forRemoval = true)
     public void remove(String id) {
         vectorStore.remove(id);
         idToResponse.remove(id);
         idToQuery.remove(id);
     }
 
+    @Deprecated(since = "2.1", forRemoval = true)
     public void clear() {
         vectorStore.clear();
         idToResponse.clear();
@@ -49,6 +52,7 @@ public class LocalVectorIndex {
      * In this implementation, we use an optimized search but track it specifically
      * to demonstrate the feasibility of standalone ANN (M.2 Contribution).
      */
+    @Deprecated(since = "2.1", forRemoval = true)
     public Optional<SearchResult> findNearest(float[] queryVec, double threshold) {
         if (vectorStore.isEmpty())
             return Optional.empty();
@@ -93,15 +97,18 @@ public class LocalVectorIndex {
         return dotProduct;
     }
 
+    @Deprecated(since = "2.1", forRemoval = true)
     public double getAvgSearchTimeMs() {
         long count = searchCount.sum();
         return count == 0 ? 0 : (totalSearchTimeNs.sum() / 1_000_000.0) / count;
     }
 
+    @Deprecated(since = "2.1", forRemoval = true)
     public int size() {
         return vectorStore.size();
     }
 
+    @Deprecated(since = "2.1", forRemoval = true)
     public record SearchResult(String id, String query, String response, double similarity, double latencyMs) {
     }
 }
