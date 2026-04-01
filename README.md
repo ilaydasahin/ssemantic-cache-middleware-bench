@@ -211,8 +211,52 @@ If you use this benchmark in your research, please cite:
   title={Semantic Caching for LLM APIs: A Production-Grade Middleware Approach},
   author={[Your Name]},
   journal={[Target Journal]},
-  year={2025}
+  year={2025},
+  note={Reproducibility artifacts available at [DOI]}
 }
+```
+
+## Q1 Publication Readiness
+
+This benchmark follows ACM/IEEE reproducibility standards:
+
+### ✅ Completed
+- [x] Statistical power analysis (see `scripts/power_analysis.py`)
+- [x] Baseline comparisons (no-cache, exact-match, state-of-the-art)
+- [x] Multiple testing correction (Benjamini-Hochberg FDR)
+- [x] Effect size reporting (Cohen's d)
+- [x] Bias analysis (query length, dataset, temporal)
+- [x] Reproducibility checklist (see `REPRODUCIBILITY.md`)
+- [x] System information logging (see `scripts/collect_system_info.sh`)
+
+### 📋 Pre-submission Checklist
+- [ ] Run full benchmark with 5+ seeds per configuration
+- [ ] Verify reproducibility score >90/100
+- [ ] Generate all figures and tables
+- [ ] Complete ethics statement (if using human data)
+- [ ] Obtain independent verification (if possible)
+- [ ] Archive code and data on Zenodo (DOI)
+
+### 🔬 Validation Commands
+```bash
+# 1. Validate experimental setup
+python3 scripts/validate_experiment.py
+
+# 2. Run power analysis
+python3 scripts/power_analysis.py --effect-size 0.5
+
+# 3. Collect system information
+bash scripts/collect_system_info.sh
+
+# 4. Run full benchmark
+./run_ollama_full_benchmark.sh
+
+# 5. Analyze results with statistical tests
+cd scripts
+python3 analyze_results.py ../results/
+
+# 6. Check for bias
+python3 bias_analysis.py --results-dir ../results/
 ```
 
 ## License

@@ -300,7 +300,9 @@ public class BenchmarkRunner {
     private List<QueryLog> processTestSet(List<DatasetRecord> testSet, ExperimentConfig config, 
                                            CheckpointManager.Checkpoint checkpoint) {
         int testSize = testSet.size();
-        List<QueryLog> queryLogs = java.util.Collections.synchronizedList(new ArrayList<>(testSize));
+        // CRITICAL FIX: Use ConcurrentHashMap to preserve query order for reproducibility
+        // Q1 journals require deterministic output - parallel add() breaks ordering
+        java.util.concurrent.ConcurrentHashMap<Integer, QueryLog> queryLogMap = new java.util.concurrent.ConcurrentHashMap<>(testSize);
         
         // Use thread-safe set for checkpoint tracking
         Set<Integer> completedIndices = java.util.Collections.synchronizedSet(checkpoint.completedQueryIndices);
@@ -389,7 +391,7 @@ public class BenchmarkRunner {
                         0.0,
                         llmService.estimateCost(testQuery, record.answer()));
 
-                queryLogs.add(new QueryLog(
+                queryLogMap.put(index, new QueryLog(
                         testQuery, record.answer(), response,
                         true, lookupResult.similarityScore(),
                         totalMs, lookupResult.embeddingTimeMs(), 0L));
@@ -421,7 +423,7 @@ public class BenchmarkRunner {
                         lookupResult.embeddingTimeMs(), llmLatencyMs,
                         0.0, actualCost, baselineCost);
 
-                queryLogs.add(new ExperimentResultExporter.QueryLog(
+                queryLogMap.put(index, new ExperimentResultExporter.QueryLog(
                         testQuery, record.answer(), response,
                         false, 0.0,
                         totalMs, lookupResult.embeddingTimeMs(), llmLatencyMs));
@@ -492,6 +494,18 @@ public class BenchmarkRunner {
         }
 
         log.info("Test phase complete: {} queries processed", testSet.size());
+        
+        // CRITICAL FIX: Convert ConcurrentHashMap to ordered List for reproducibility
+        // Q1 journals require deterministic output - sort by original query index
+        List<QueryLog> queryLogs = new ArrayList<>(testSize);
+        for (int i = 0; i < testSize; i++) {
+            QueryLog log = queryLogMap.get(i);
+            if (log != null) {
+                queryLogs.add(log);
+            }
+        }
+        
+        log.info("Query logs collected: {} entries (expected: {})", queryLogs.size(), testSize);
         return queryLogs;
     }
     
