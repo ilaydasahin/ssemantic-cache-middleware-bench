@@ -358,7 +358,7 @@ public class BenchmarkRunner {
             
             DatasetRecord record = testSet.get(index);
             
-            // Retry loop - NEVER FAIL! (but with max 100 attempts to prevent infinite loops)
+            // Retry loop - NEVER FAIL! Exponential backoff for Ollama recovery
             boolean success = false;
             int retryCount = 0;
             final int MAX_RETRIES = 100;
@@ -465,14 +465,23 @@ public class BenchmarkRunner {
                     if (retryCount >= MAX_RETRIES) {
                         log.error("Query {} failed after {} attempts. Skipping to prevent infinite loop.", 
                                 index, MAX_RETRIES);
+                        // Add placeholder log for failed query (for data completeness)
+                        queryLogMap.put(index, new ExperimentResultExporter.QueryLog(
+                                record.query(), record.answer(), "ERROR: Max retries exceeded",
+                                false, 0.0, 0L, 0L, 0L));
                         break; // Exit retry loop after max attempts
                     }
-                    log.error("Query {} failed (attempt {}/{}): {}. Retrying in 5s...", 
-                            index, retryCount, MAX_RETRIES, ex.getMessage());
+                    
+                    // Exponential backoff: 5s, 10s, 20s, 40s, ... (max 60s)
+                    long backoffMs = Math.min(5000L * (1L << (retryCount - 1)), 60000L);
+                    log.warn("Query {} failed (attempt {}/{}): {}. Retrying in {}s...", 
+                            index, retryCount, MAX_RETRIES, ex.getMessage(), backoffMs / 1000);
+                    
                     try {
-                        Thread.sleep(5000);
+                        Thread.sleep(backoffMs);
                     } catch (InterruptedException ie) {
                         Thread.currentThread().interrupt();
+                        break; // Exit if interrupted
                     }
                     // Loop continues - NEVER GIVE UP (until max retries)!
                 }

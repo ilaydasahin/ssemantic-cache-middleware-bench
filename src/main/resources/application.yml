@@ -95,9 +95,10 @@ llm:
   # Ollama yerel model ayarları (provider: ollama için)
   ollama:
     url: http://localhost:11434
-    model: llama3.2  # Seçenekler: llama3.2, phi3, mistral, gemma2:2b
+    model: llama3.2:3b  # Yüklü model adı (ollama list ile kontrol edin)
     temperature: 0.0
     max-tokens: 1024
+    timeout-seconds: 600  # 10 dakika - yerel model için uzun timeout
 
 # ============================================
 # Benchmark Configuration

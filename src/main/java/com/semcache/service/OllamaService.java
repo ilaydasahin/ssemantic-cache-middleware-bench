@@ -39,6 +39,9 @@ public class OllamaService implements LLMService {
     @Value("${llm.ollama.max-tokens:1024}")
     private int maxTokens;
     
+    @Value("${llm.ollama.timeout-seconds:600}")
+    private int timeoutSeconds;  // 10 dakika default (yerel model için)
+    
     private final MeterRegistry meterRegistry;
     private WebClient webClient;
     private Timer llmTimer;
@@ -51,9 +54,9 @@ public class OllamaService implements LLMService {
 
     @PostConstruct
     public void init() {
-        // WebClient yapılandırması
+        // WebClient yapılandırması - Yerel model için uzun timeout
         reactor.netty.http.client.HttpClient httpClient = reactor.netty.http.client.HttpClient.create()
-                .responseTimeout(Duration.ofMinutes(5)); // Yerel model için uzun timeout
+                .responseTimeout(Duration.ofSeconds(timeoutSeconds));
         
         this.webClient = WebClient.builder()
                 .baseUrl(ollamaUrl)
@@ -76,8 +79,8 @@ public class OllamaService implements LLMService {
                 .description("Ollama LLM hata sayısı")
                 .register(meterRegistry);
 
-        log.info("🚀 OllamaService başlatıldı: url={}, model={}, temperature={}, maxTokens={}", 
-                ollamaUrl, model, temperature, maxTokens);
+        log.info("🚀 OllamaService başlatıldı: url={}, model={}, temperature={}, maxTokens={}, timeout={}s", 
+                ollamaUrl, model, temperature, maxTokens, timeoutSeconds);
         log.info("✅ Tamamen yerel ve ücretsiz mod aktif - internet bağlantısı gerekmez");
         
         // Ollama bağlantısını test et
