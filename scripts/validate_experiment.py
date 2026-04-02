@@ -30,13 +30,20 @@ class ValidationWarning(Exception):
 
 
 def check_java_version():
-    """Verify Java 21 is installed."""
+    """Verify Java 17+ is installed."""
     try:
         result = subprocess.run(['java', '-version'], capture_output=True, text=True)
         version_line = result.stderr.split('\n')[0]
         
-        if '21' not in version_line and '17' not in version_line:
-            raise ValidationError(f"Java 21 required, found: {version_line}")
+        # Extract version number (handles both old and new format)
+        import re
+        version_match = re.search(r'version "?(\d+)', version_line)
+        if version_match:
+            major_version = int(version_match.group(1))
+            if major_version < 17:
+                raise ValidationError(f"Java 17+ required, found version {major_version}")
+        else:
+            raise ValidationError(f"Cannot parse Java version: {version_line}")
         
         print(f"✅ Java version: {version_line}")
     except FileNotFoundError:

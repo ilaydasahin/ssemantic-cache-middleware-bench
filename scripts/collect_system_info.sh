@@ -33,6 +33,11 @@ MAVEN_VERSION=$(mvn -version 2>&1 | head -n 1 | awk '{print $3}')
 # Python version
 PYTHON_VERSION=$(python3 --version 2>&1 | awk '{print $2}')
 
+# Python packages
+NUMPY_VERSION=$(python3 -c "import numpy; print(numpy.__version__)" 2>/dev/null || echo "Not installed")
+PANDAS_VERSION=$(python3 -c "import pandas; print(pandas.__version__)" 2>/dev/null || echo "Not installed")
+STATSMODELS_VERSION=$(python3 -c "import statsmodels; print(statsmodels.__version__)" 2>/dev/null || echo "Not installed")
+
 # Redis version (if available)
 if command -v redis-server &> /dev/null; then
     REDIS_VERSION=$(redis-server --version | awk '{print $3}' | cut -d'=' -f2)
@@ -73,6 +78,9 @@ cat > "$OUTPUT_FILE" << EOF
     "java": "$JAVA_VERSION",
     "maven": "$MAVEN_VERSION",
     "python": "$PYTHON_VERSION",
+    "numpy": "$NUMPY_VERSION",
+    "pandas": "$PANDAS_VERSION",
+    "statsmodels": "$STATSMODELS_VERSION",
     "redis": "$REDIS_VERSION",
     "ollama": "$OLLAMA_VERSION"
   },
