@@ -5,6 +5,8 @@ import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
 
 import java.util.*;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicLong;
 
 /**
  * Computes and aggregates all quantitative metrics reported in the experimental
@@ -64,6 +66,10 @@ public class MetricsCollector {
         observations.add(new Observation(
                 hit, totalLatencyMs, embeddingLatencyMs, llmLatencyMs,
                 similarityScore, actualCost, baselineCost));
+
+        // O(1) counters for fast progress reporting (avoids O(n) stream scans)
+        if (hit) hitCounter.incrementAndGet();
+        latencySum.addAndGet(totalLatencyMs);
     }
 
     /**
@@ -155,24 +161,19 @@ public class MetricsCollector {
     /** Resets all recorded observations. Call before each independent experimental run. */
     public void reset() {
         observations.clear();
+        hitCounter.set(0);
+        latencySum.set(0);
     }
-    
-    /** Returns current hit count for progress reporting (thread-safe) */
+
+    /** Returns current hit count — O(1) via atomic counter. */
     public int getHitCount() {
-        synchronized (observations) {
-            return (int) observations.stream().filter(Observation::hit).count();
-        }
+        return hitCounter.get();
     }
-    
-    /** Returns current average latency for progress reporting (thread-safe) */
+
+    /** Returns current average latency — O(1) via atomic sum. */
     public double getAverageLatency() {
-        synchronized (observations) {
-            if (observations.isEmpty()) return 0.0;
-            return observations.stream()
-                    .mapToLong(Observation::totalLatencyMs)
-                    .average()
-                    .orElse(0.0);
-        }
+        int size = observations.size();
+        return size > 0 ? (double) latencySum.get() / size : 0.0;
     }
 
     // ─────────────────────────────────────────────────────────────────────────
@@ -219,6 +220,10 @@ public class MetricsCollector {
     // ─────────────────────────────────────────────────────────────────────────
 
     private final List<Observation> observations = Collections.synchronizedList(new ArrayList<>());
+
+    /** O(1) progress counters — avoid stream scans during benchmark. */
+    private final AtomicInteger hitCounter = new AtomicInteger(0);
+    private final AtomicLong latencySum = new AtomicLong(0);
 
     // ─────────────────────────────────────────────────────────────────────────
     // Value types

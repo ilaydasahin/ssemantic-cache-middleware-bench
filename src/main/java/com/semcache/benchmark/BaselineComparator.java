@@ -4,7 +4,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
 
-import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.Map;
 
 /**
@@ -65,7 +65,7 @@ public class BaselineComparator {
             MetricsCollector.AggregateMetrics exactMatchMetrics,
             MetricsCollector.AggregateMetrics noCacheMetrics) {
         
-        Map<String, Object> report = new HashMap<>();
+        Map<String, Object> report = new LinkedHashMap<>();
         
         // Latency improvements
         double latencyVsNoCache = computeLatencyImprovement(

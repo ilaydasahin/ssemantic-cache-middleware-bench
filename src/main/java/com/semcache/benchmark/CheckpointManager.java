@@ -112,10 +112,17 @@ public class CheckpointManager {
                 }
             }
             
+            // Snapshot to prevent ConcurrentModificationException during serialization
+            Checkpoint snapshotCheckpoint = new Checkpoint(
+                    checkpoint.experimentId, checkpoint.dataset,
+                    checkpoint.seed, checkpoint.threshold, checkpoint.totalQueries);
+            snapshotCheckpoint.completedQueryIndices = new HashSet<>(checkpoint.completedQueryIndices);
+            snapshotCheckpoint.lastUpdateTime = checkpoint.lastUpdateTime;
+
             // Atomic write: temp file + rename
             String tempFilename = filename + ".tmp";
             objectMapper.writerWithDefaultPrettyPrinter()
-                    .writeValue(new File(tempFilename), checkpoint);
+                    .writeValue(new File(tempFilename), snapshotCheckpoint);
             
             // Backup previous checkpoint before overwriting
             File targetFile = new File(filename);

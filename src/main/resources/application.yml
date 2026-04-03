@@ -122,6 +122,10 @@ benchmark:
   # Adversarial noise injection probability [0,1] (§5.6)
   noise-probability: 0.0
   
+  # Execution tuning
+  batch-size: 100
+  parallelism: 4
+  
   # Datasets
   datasets:
     - name: msmarco

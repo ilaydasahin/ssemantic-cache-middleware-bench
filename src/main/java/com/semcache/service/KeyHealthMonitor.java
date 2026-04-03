@@ -50,8 +50,8 @@ public class KeyHealthMonitor {
         int total = stats.successCount.get() + stats.errorCount.get();
         if (total >= 10 && stats.getSuccessRate() < 50.0) {
             stats.disabled = true;
-            log.warn("⚠️ Key auto-disabled due to high error rate: {:.1f}% success", 
-                    stats.getSuccessRate());
+            log.warn("Key auto-disabled due to high error rate: {}% success", 
+                    String.format(java.util.Locale.US, "%.1f", stats.getSuccessRate()));
         }
     }
     
@@ -66,10 +66,10 @@ public class KeyHealthMonitor {
         log.info("=== Key Health Report ===");
         keyStats.forEach((key, stats) -> {
             int keyIndex = key.hashCode() % 100; // Simple index for logging
-            log.info("Key {}: Success Rate: {:.1f}% | Avg Latency: {:.0f}ms | Calls: {} | Status: {}",
-                    keyIndex,
-                    stats.getSuccessRate(),
-                    stats.getAverageLatency(),
+            log.info("Key {}: Success Rate: {}% | Avg Latency: {}ms | Calls: {} | Status: {}",
+                    Math.abs(keyIndex),
+                    String.format(java.util.Locale.US, "%.1f", stats.getSuccessRate()),
+                    String.format(java.util.Locale.US, "%.0f", stats.getAverageLatency()),
                     stats.successCount.get() + stats.errorCount.get(),
                     stats.disabled ? "DISABLED" : "ACTIVE");
         });

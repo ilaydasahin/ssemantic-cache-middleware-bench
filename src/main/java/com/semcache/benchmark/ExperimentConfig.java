@@ -73,25 +73,23 @@ public record ExperimentConfig(
 
     public String toLogSummary() {
         return String.format(java.util.Locale.US,
-                "╔══════════════════════════════════════════════╗%n" +
-                "║         EXPERIMENT CONFIGURATION             ║%n" +
-                "╠══════════════════════════════════════════════╣%n" +
-                "║ Experiment ID  : %s%n" +
-                "║ Timestamp      : %s%n" +
-                "║ JVM Version    : %s%n" +
-                "║ Dataset        : %s (%s)%n" +
-                "║ Embedding Model: %s%n" +
-                "║ Threshold (θ)  : %.2f%n" +
-                "║ Warmup Strategy: %s  (ratio=%.2f)%n" +
-                "║ Random Seed    : %d%n" +
-                "║ Sample Size    : %s%n" +
-                "║ HNSW Enabled   : %s%n" +
-                "║ Cache Strategy : %s  (k=%d)%n" +
-                "║ Max Entries    : %d  TTL=%ds%n" +
-                "║ Zipfian Skew   : %.2f%n" +
-                "║ Noise Prob     : %.2f%n" +
-                "║ Output File    : %s%n" +
-                "╚══════════════════════════════════════════════╝",
+                "--- EXPERIMENT CONFIGURATION ---%n" +
+                " Experiment ID  : %s%n" +
+                " Timestamp      : %s%n" +
+                " JVM Version    : %s%n" +
+                " Dataset        : %s (%s)%n" +
+                " Embedding Model: %s%n" +
+                " Threshold (θ)  : %.2f%n" +
+                " Warmup Strategy: %s  (ratio=%.2f)%n" +
+                " Random Seed    : %d%n" +
+                " Sample Size    : %s%n" +
+                " HNSW Enabled   : %s%n" +
+                " Cache Strategy : %s  (k=%d)%n" +
+                " Max Entries    : %d  TTL=%ds%n" +
+                " Zipfian Skew   : %.2f%n" +
+                " Noise Prob     : %.2f%n" +
+                " Output File    : %s%n" +
+                "--------------------------------",
                 experimentId, runTimestamp, javaVersion,
                 datasetName, datasetPath,
                 embeddingModelName,

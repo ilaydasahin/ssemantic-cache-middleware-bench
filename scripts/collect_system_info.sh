@@ -27,6 +27,20 @@ fi
 # Java version
 JAVA_VERSION=$(java -version 2>&1 | head -n 1 | cut -d'"' -f2)
 
+# Java compile target (from pom.xml)
+JAVA_COMPILE_TARGET="25"
+if [ -f "pom.xml" ]; then
+    COMPILE_TARGET=$(grep -m1 '<maven.compiler.target>' pom.xml 2>/dev/null | sed 's/.*<maven.compiler.target>\(.*\)<\/maven.compiler.target>.*/\1/')
+    [ -n "$COMPILE_TARGET" ] && JAVA_COMPILE_TARGET="$COMPILE_TARGET"
+fi
+
+# Spring Boot version (from pom.xml)
+SPRING_BOOT_VERSION="unknown"
+if [ -f "pom.xml" ]; then
+    SB_VERSION=$(grep -A1 'spring-boot-starter-parent' pom.xml 2>/dev/null | grep '<version>' | sed 's/.*<version>\(.*\)<\/version>.*/\1/')
+    [ -n "$SB_VERSION" ] && SPRING_BOOT_VERSION="$SB_VERSION"
+fi
+
 # Maven version
 MAVEN_VERSION=$(mvn -version 2>&1 | head -n 1 | awk '{print $3}')
 
@@ -75,7 +89,9 @@ cat > "$OUTPUT_FILE" << EOF
     "ram": "$TOTAL_RAM"
   },
   "software": {
-    "java": "$JAVA_VERSION",
+    "java_runtime": "$JAVA_VERSION",
+    "java_compile_target": "$JAVA_COMPILE_TARGET",
+    "spring_boot": "$SPRING_BOOT_VERSION",
     "maven": "$MAVEN_VERSION",
     "python": "$PYTHON_VERSION",
     "numpy": "$NUMPY_VERSION",

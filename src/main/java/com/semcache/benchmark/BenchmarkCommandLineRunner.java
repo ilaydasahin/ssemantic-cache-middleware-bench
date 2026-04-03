@@ -4,6 +4,8 @@ import com.semcache.config.BenchmarkProperties;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.boot.CommandLineRunner;
+import org.springframework.boot.SpringApplication;
+import org.springframework.context.ApplicationContext;
 import org.springframework.context.annotation.Profile;
 import org.springframework.stereotype.Component;
 
@@ -18,17 +20,20 @@ public class BenchmarkCommandLineRunner implements CommandLineRunner {
     private final EvictionStressTestRunner stressTestRunner;
     private final BenchmarkProperties properties;
     private final DatasetLoader datasetLoader;
+    private final ApplicationContext applicationContext;
 
     public BenchmarkCommandLineRunner(BenchmarkRunner benchmarkRunner,
             ThroughputBenchmarkRunner throughputRunner,
             EvictionStressTestRunner stressTestRunner,
             BenchmarkProperties properties,
-            DatasetLoader datasetLoader) {
+            DatasetLoader datasetLoader,
+            ApplicationContext applicationContext) {
         this.benchmarkRunner = benchmarkRunner;
         this.throughputRunner = throughputRunner;
         this.stressTestRunner = stressTestRunner;
         this.properties = properties;
         this.datasetLoader = datasetLoader;
+        this.applicationContext = applicationContext;
     }
 
     @Override
@@ -38,7 +43,7 @@ public class BenchmarkCommandLineRunner implements CommandLineRunner {
             log.info("Heavy churn mode enabled.");
             BenchmarkProperties.DatasetConfig datasetConfig = resolveDatasetConfig(resolveCurrentDatasetName());
             stressTestRunner.runHeavyChurnTest(datasetConfig.getPath(), datasetLoader, properties.getOutputFile());
-            System.exit(0);
+            System.exit(SpringApplication.exit(applicationContext, () -> 0));
             return;
         }
 
@@ -48,8 +53,9 @@ public class BenchmarkCommandLineRunner implements CommandLineRunner {
             BenchmarkProperties.DatasetConfig datasetConfig = resolveDatasetConfig(resolveCurrentDatasetName());
             log.info("Loading dataset {} for throughput test...", datasetConfig.getName());
             java.util.List<DatasetLoader.DatasetRecord> dataset = datasetLoader.load(datasetConfig.getPath());
-            throughputRunner.runForUsers(singleConcurrentUsers, dataset, properties.getOutputFile());
-            System.exit(0);
+            long seed = properties.getCurrentSeed() != null ? properties.getCurrentSeed().longValue() : 42L;
+            throughputRunner.runForUsers(singleConcurrentUsers, dataset, properties.getOutputFile(), seed);
+            System.exit(SpringApplication.exit(applicationContext, () -> 0));
             return;
         }
 
@@ -59,14 +65,14 @@ public class BenchmarkCommandLineRunner implements CommandLineRunner {
 
         if (datasetName == null || seed == null) {
             log.error("Missing required parameters.");
-            System.exit(1);
+            System.exit(SpringApplication.exit(applicationContext, () -> 1));
             return;
         }
 
         BenchmarkProperties.DatasetConfig datasetConfig = findDatasetConfig(datasetName);
         if (datasetConfig == null) {
             log.error("Dataset not found.");
-            System.exit(1);
+            System.exit(SpringApplication.exit(applicationContext, () -> 1));
             return;
         }
 
@@ -95,10 +101,10 @@ public class BenchmarkCommandLineRunner implements CommandLineRunner {
         try {
             benchmarkRunner.run(config);
             log.info("Benchmark complete — written to: {}", outputFile);
-            System.exit(0);
+            System.exit(SpringApplication.exit(applicationContext, () -> 0));
         } catch (Exception e) {
             log.error("Benchmark run failed: {}", e.getMessage(), e);
-            System.exit(1);
+            System.exit(SpringApplication.exit(applicationContext, () -> 1));
         }
     }
 

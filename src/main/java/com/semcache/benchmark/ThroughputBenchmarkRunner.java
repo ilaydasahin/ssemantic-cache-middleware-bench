@@ -44,7 +44,8 @@ public class ThroughputBenchmarkRunner {
      * Called by BenchmarkCommandLineRunner in throughput mode.
      */
     public void runForUsers(int concurrentUsers,
-            java.util.List<com.semcache.benchmark.DatasetLoader.DatasetRecord> dataset, String outputFile)
+            java.util.List<com.semcache.benchmark.DatasetLoader.DatasetRecord> dataset, String outputFile,
+            long experimentSeed)
             throws Exception {
         log.info("=== Throughput Test: {} concurrent users ===", concurrentUsers);
 
@@ -68,7 +69,7 @@ public class ThroughputBenchmarkRunner {
 
         log.info("Generating {} test requests following Zipfian distribution (s={}) over {} pool...",
                 totalRequests, zipfExponent, poolSize);
-        List<String> testQueries = generateZipfianTestQueries(dataset.subList(0, poolSize), totalRequests, zipfExponent);
+        List<String> testQueries = generateZipfianTestQueries(dataset.subList(0, poolSize), totalRequests, zipfExponent, experimentSeed);
 
         // 3. Run load test
         ThroughputResult result = runLoadTest(concurrentUsers, testQueries);
@@ -142,40 +143,14 @@ public class ThroughputBenchmarkRunner {
         return new ThroughputResult(concurrency, totalRequests, rps, avgLatencyNs / 1_000_000.0, p99Ns / 1_000_000);
     }
 
-    /**
-     * Generates a list of queries sampled via Zipfian distribution from the actual
-     * pool of queries.
-     * Prevents uniform-random caching artifacts by modeling realistic power-law
-     * traffic.
-     */
     private List<String> generateZipfianTestQueries(
-            List<com.semcache.benchmark.DatasetLoader.DatasetRecord> pool, int numRequests, double s) {
-        int poolSize = pool.size();
-
-        // Compute power weights once; reuse for both normalization and CDF construction
-        double[] weights = new double[poolSize];
-        double total = 0;
-        for (int i = 0; i < poolSize; i++) {
-            weights[i] = 1.0 / Math.pow(i + 1, s);
-            total += weights[i];
-        }
-
-        double[] cdf = new double[poolSize];
-        double sum = 0;
-        for (int i = 0; i < poolSize; i++) {
-            sum += weights[i] / total;
-            cdf[i] = sum;
-        }
-
+            List<com.semcache.benchmark.DatasetLoader.DatasetRecord> pool, int numRequests, double s, long seed) {
+        
+        List<Integer> indices = ZipfianDistribution.generateIndices(pool.size(), numRequests, s, seed);
+        
         List<String> queries = new ArrayList<>(numRequests);
-        Random random = new Random(42); // deterministic
-        for (int i = 0; i < numRequests; i++) {
-            double p = random.nextDouble();
-            int index = Arrays.binarySearch(cdf, p);
-            if (index < 0)
-                index = -(index + 1);
-            index = Math.min(index, poolSize - 1);
-            queries.add(pool.get(index).query());
+        for (int idx : indices) {
+            queries.add(pool.get(idx).query());
         }
         return queries;
     }

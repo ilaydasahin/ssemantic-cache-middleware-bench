@@ -1,6 +1,7 @@
 package com.semcache.service;
 
 import ai.onnxruntime.*;
+import com.semcache.model.EmbeddingModelType;
 import io.micrometer.core.instrument.MeterRegistry;
 import io.micrometer.core.instrument.Timer;
 import jakarta.annotation.PostConstruct;
@@ -38,19 +39,10 @@ public class OnnxEmbeddingService implements EmbeddingService {
     private static class ModelContext {
         BlockingQueue<OrtSession> sessionPool;
         SimpleWordPieceTokenizer tokenizer;
-        int dimension;
-        int maxLength; // T2: per-model max sequence length
+        EmbeddingModelType modelType;
         Timer timer;
-        String name;
         int poolSize;
     }
-
-    private record ModelSpec(String dir, int dim, int maxLen) {}
-
-    private static final Map<String, ModelSpec> MODEL_SPECS = Map.of(
-            "minilm",   new ModelSpec("all-MiniLM-L6-v2",          384, 128),
-            "mpnet",    new ModelSpec("all-mpnet-base-v2",          768, 384),
-            "tinybert", new ModelSpec("paraphrase-TinyBERT-L6-v2", 312, 128));
 
     private final Map<String, ModelContext> modelRegistry = new HashMap<>();
 
@@ -75,9 +67,8 @@ public class OnnxEmbeddingService implements EmbeddingService {
             env = OrtEnvironment.getEnvironment();
 
             // Auto-load available models from the filesystem
-            String[] commonModels = { "minilm", "mpnet", "tinybert" };
-            for (String m : commonModels) {
-                tryLoadModel(m);
+            for (EmbeddingModelType type : EmbeddingModelType.values()) {
+                tryLoadModel(type);
             }
             
             // Validate that at least one model was loaded
@@ -100,27 +91,23 @@ public class OnnxEmbeddingService implements EmbeddingService {
             log.info("OnnxEmbeddingService ready with {} models: {}",
                     modelRegistry.size(), modelRegistry.keySet());
             log.info("✅ Primary model: {} ({}d)", primaryModelName, 
-                    modelRegistry.get(primaryModelName.toLowerCase()).dimension);
+                    modelRegistry.get(primaryModelName.toLowerCase()).modelType.dimension());
         } catch (Exception e) {
             log.error("Failed to initialize ONNX environment: {}", e.getMessage());
             throw new IllegalStateException("ONNX initialization failed", e);
         }
     }
 
-    private void tryLoadModel(String name) {
-        // T2 fix: per-model architecture parameters consolidated in MODEL_SPECS
-        ModelSpec spec = MODEL_SPECS.getOrDefault(name, MODEL_SPECS.get("minilm"));
-
-        String modelPath = "models/" + spec.dir() + "/model.onnx";
-        String vocabPath = "models/" + spec.dir() + "/vocab.txt";
+    private void tryLoadModel(EmbeddingModelType type) {
+        String name = type.name().toLowerCase();
+        String modelPath = "models/" + type.directoryName() + "/model.onnx";
+        String vocabPath = "models/" + type.directoryName() + "/vocab.txt";
 
         File modelFile = new File(modelPath);
         if (modelFile.exists()) {
             try {
                 ModelContext ctx = new ModelContext();
-                ctx.name = name;
-                ctx.dimension = spec.dim();
-                ctx.maxLength = spec.maxLen(); // T2: per-model length
+                ctx.modelType = type;
                 ctx.tokenizer = new SimpleWordPieceTokenizer(vocabPath);
                 ctx.timer = Timer.builder("embedding.latency")
                         .tag("model", name)
@@ -138,7 +125,7 @@ public class OnnxEmbeddingService implements EmbeddingService {
 
                 modelRegistry.put(name, ctx);
                 log.info("Loaded model context: {} ({}d, maxLen={}, poolSize={})", 
-                        name, spec.dim(), spec.maxLen(), ctx.poolSize);
+                        name, type.dimension(), type.maxSequenceLength(), ctx.poolSize);
             } catch (Exception e) {
                 log.warn("Failed to load model {}: {}", name, e.getMessage());
             }
@@ -236,7 +223,7 @@ public class OnnxEmbeddingService implements EmbeddingService {
     @Override
     public int getEmbeddingDimension(String modelName) {
         ModelContext ctx = modelRegistry.get(modelName.toLowerCase());
-        return ctx != null ? ctx.dimension : 384;
+        return ctx != null ? ctx.modelType.dimension() : 384;
     }
 
     @Override
@@ -247,7 +234,7 @@ public class OnnxEmbeddingService implements EmbeddingService {
     private float[] performInference(String text, ModelContext ctx, OrtSession session) {
         try {
             // T2: use per-model maxLength, fallback to global maxLength
-            int seqLen = (ctx.maxLength > 0) ? ctx.maxLength : maxLength;
+            int seqLen = (ctx.modelType.maxSequenceLength() > 0) ? ctx.modelType.maxSequenceLength() : maxLength;
             List<Integer> tokenIds = ctx.tokenizer.tokenize(text, seqLen);
             long[] inputIds = tokenIds.stream().mapToLong(i -> i).toArray();
             long[] attentionMask = new long[seqLen];
@@ -264,24 +251,25 @@ public class OnnxEmbeddingService implements EmbeddingService {
                 inputs.put("input_ids", idsTensor);
                 inputs.put("attention_mask", maskTensor);
 
-                if (session.getInputNames().contains("token_type_ids")) {
-                    long[] ttids = new long[seqLen];
-                    try (OnnxTensor ttidsTensor = OnnxTensor.createTensor(env, LongBuffer.wrap(ttids), shape)) {
+                OnnxTensor ttidsTensor = null;
+                try {
+                    if (session.getInputNames().contains("token_type_ids")) {
+                        long[] ttids = new long[seqLen];
+                        ttidsTensor = OnnxTensor.createTensor(env, LongBuffer.wrap(ttids), shape);
                         inputs.put("token_type_ids", ttidsTensor);
-                        try (OrtSession.Result results = session.run(inputs)) {
-                            float[][][] outputData = (float[][][]) results.get(0).getValue();
-                            return meanPooling(outputData[0], attentionMask, ctx.dimension);
-                        }
                     }
-                } else {
                     try (OrtSession.Result results = session.run(inputs)) {
                         float[][][] outputData = (float[][][]) results.get(0).getValue();
-                        return meanPooling(outputData[0], attentionMask, ctx.dimension);
+                        return meanPooling(outputData[0], attentionMask, ctx.modelType.dimension());
+                    }
+                } finally {
+                    if (ttidsTensor != null) {
+                        ttidsTensor.close();
                     }
                 }
             }
         } catch (Exception e) {
-            throw new RuntimeException("Inference failed for " + ctx.name, e);
+            throw new RuntimeException("Inference failed for " + ctx.modelType.name(), e);
         }
     }
 

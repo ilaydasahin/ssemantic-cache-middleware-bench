@@ -51,7 +51,7 @@ public class NotificationService {
         String message = formatMessage(experimentId, dataset, hitRate, p99Latency, durationMinutes);
         
         // Console notification (always)
-        log.info("📧 {}", message);
+        log.info("{}", message);
         
         // Slack notification
         if (slackWebhook != null && !slackWebhook.isEmpty()) {
@@ -68,7 +68,7 @@ public class NotificationService {
                                  double hitRate, double p99Latency, 
                                  long durationMinutes) {
         return String.format(
-                "✅ Experiment Complete!\n" +
+                "Experiment Complete!\n" +
                 "ID: %s\n" +
                 "Dataset: %s\n" +
                 "Hit Rate: %.1f%%\n" +

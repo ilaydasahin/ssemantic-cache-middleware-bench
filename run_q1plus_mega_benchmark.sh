@@ -143,6 +143,7 @@ for SEED in "${SEEDS[@]}"; do
                     # Run benchmark
                     mvn spring-boot:run \
                         -Dspring-boot.run.profiles=benchmark,ollama \
+                        -Dspring-boot.run.jvmArguments="--enable-native-access=ALL-UNNAMED" \
                         -Dspring-boot.run.arguments="--mode=throughput --dataset=${DATASET} --seed=${SEED} --strategy=${STRATEGY} --embedding-model=${MODEL} --concurrent-users=${USERS}" \
                         > "${LOG_FILE}" 2>&1
                     

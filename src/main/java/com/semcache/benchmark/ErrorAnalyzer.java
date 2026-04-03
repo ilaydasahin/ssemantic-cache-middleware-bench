@@ -34,7 +34,7 @@ public class ErrorAnalyzer {
     
     public void generateInsights() {
         if (errorTypes.isEmpty() && thresholdPerformance.isEmpty()) {
-            log.info("✅ No errors detected - system running smoothly!");
+            log.info("No errors detected - system running smoothly");
             return;
         }
         
@@ -56,9 +56,10 @@ public class ErrorAnalyzer {
                     .map(Map.Entry::getKey)
                     .orElse(0.90);
             
-            log.info("💡 Insight: Threshold {:.2f} shows best performance", bestThreshold);
-            log.info("💡 Recommendation: Consider using threshold={:.2f} for optimal hit rate", 
-                    bestThreshold);
+            log.info("Insight: Threshold {} shows best performance", 
+                    String.format(java.util.Locale.US, "%.2f", bestThreshold));
+            log.info("Recommendation: Consider using threshold={} for optimal hit rate", 
+                    String.format(java.util.Locale.US, "%.2f", bestThreshold));
         }
         
         // Failed query patterns

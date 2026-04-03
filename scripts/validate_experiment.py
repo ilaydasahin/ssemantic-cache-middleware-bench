@@ -40,8 +40,8 @@ def check_java_version():
         version_match = re.search(r'version "?(\d+)', version_line)
         if version_match:
             major_version = int(version_match.group(1))
-            if major_version < 17:
-                raise ValidationError(f"Java 17+ required, found version {major_version}")
+            if major_version < 25:
+                raise ValidationError(f"Java 25+ required, found version {major_version}")
         else:
             raise ValidationError(f"Cannot parse Java version: {version_line}")
         

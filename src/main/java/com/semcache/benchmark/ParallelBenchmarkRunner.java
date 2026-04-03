@@ -45,7 +45,7 @@ public class ParallelBenchmarkRunner {
         }
         
         // Multiple experiments, run in parallel
-        log.info("🚀 Starting {} experiments in parallel...", configs.size());
+        log.info("Starting {} experiments in parallel...", configs.size());
         ExecutorService executor = Executors.newFixedThreadPool(
                 Math.min(configs.size(), Runtime.getRuntime().availableProcessors()));
         
@@ -55,16 +55,16 @@ public class ParallelBenchmarkRunner {
                         try {
                             log.info("Starting parallel experiment: {}", config.datasetName());
                             benchmarkRunner.run(config);
-                            log.info("✅ Completed: {}", config.datasetName());
+                            log.info("Completed: {}", config.datasetName());
                         } catch (Exception e) {
-                            log.error("❌ Failed: {}", config.datasetName(), e);
+                            log.error("Failed: {}", config.datasetName(), e);
                             throw new RuntimeException(e);
                         }
                     }, executor))
                     .toArray(CompletableFuture[]::new);
             
             CompletableFuture.allOf(futures).join();
-            log.info("✅ All {} experiments completed successfully!", configs.size());
+            log.info("All {} experiments completed successfully!", configs.size());
             return true;
             
         } catch (Exception e) {

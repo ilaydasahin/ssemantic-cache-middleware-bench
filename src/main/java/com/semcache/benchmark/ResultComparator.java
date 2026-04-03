@@ -40,7 +40,7 @@ public class ResultComparator {
             
             // Compare with most recent
             File previousFile = previousResults.get(0);
-            log.info("📊 Comparing with previous result: {}", previousFile.getName());
+            log.info("Comparing with previous result: {}", previousFile.getName());
             
             Map<String, Object> current = objectMapper.readValue(currentFile, 
                     new com.fasterxml.jackson.core.type.TypeReference<Map<String, Object>>() {});
@@ -72,11 +72,14 @@ public class ResultComparator {
             double change = currValue - prevValue;
             double changePercent = prevValue != 0 ? (change / prevValue * 100) : 0;
             
-            String arrow = change > 0 ? (higherIsBetter ? "📈" : "📉") : (higherIsBetter ? "📉" : "📈");
+            String arrow = change > 0 ? (higherIsBetter ? "[+]" : "[-]") : (higherIsBetter ? "[-]" : "[+]");
             String sign = change > 0 ? "+" : "";
             
-            log.info("{} {}: {:.2f}{} → {:.2f}{} ({}{:.1f}%)",
-                    arrow, name, prevValue, unit, currValue, unit, sign, changePercent);
+            log.info("{} {}: {}{} -> {}{} ({}{}%)",
+                    arrow, name, 
+                    String.format(java.util.Locale.US, "%.2f", prevValue), unit, 
+                    String.format(java.util.Locale.US, "%.2f", currValue), unit, 
+                    sign, String.format(java.util.Locale.US, "%.1f", changePercent));
                     
         } catch (Exception e) {
             log.debug("Could not compare metric: {}", key);

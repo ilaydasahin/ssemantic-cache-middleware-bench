@@ -16,7 +16,6 @@ import org.springframework.stereotype.Component;
 
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Random;
 import java.util.Set;
 import java.io.File;
 
@@ -65,12 +64,10 @@ public class BenchmarkRunner {
     // Configuration constants (extracted from magic numbers)
     private static final int HEALTH_CHECK_FREQUENCY = 100; // queries
     private static final int PROGRESS_REPORT_FREQUENCY = 100; // queries
-    private static final int CHECKPOINT_FREQUENCY_SMALL = 5; // for first 100 queries
-    private static final int CHECKPOINT_FREQUENCY_LARGE = 50; // for remaining queries
-    private static final int MAX_THREAD_POOL_SIZE = 32;
-    private static final int THREAD_POOL_SHUTDOWN_TIMEOUT_SECONDS = 60;
-
-    // ── Configurable experiment parameter (S3: no hardcoded constants) ────────
+    private static final int CHECKPOINT_FREQUENCY_SMALL = 25;
+    private static final int CHECKPOINT_FREQUENCY_LARGE = 100;
+    
+    // Memory and resource limitse experiment parameter (S3: no hardcoded constants) ────────
     /**
      * Fraction of the dataset used for cache warming. Injected from
      * {@code application.yml}.
@@ -297,269 +294,192 @@ public class BenchmarkRunner {
      * @param config  Active experiment configuration (for LLM cost estimation)
      * @return Ordered list of per-query observations for post-hoc evaluation
      */
+    
     private List<QueryLog> processTestSet(List<DatasetRecord> testSet, ExperimentConfig config, 
                                            CheckpointManager.Checkpoint checkpoint) {
         int testSize = testSet.size();
-        // CRITICAL FIX: Use ConcurrentHashMap to preserve query order for reproducibility
-        // Q1 journals require deterministic output - parallel add() breaks ordering
-        java.util.concurrent.ConcurrentHashMap<Integer, QueryLog> queryLogMap = new java.util.concurrent.ConcurrentHashMap<>(testSize);
+        Set<Integer> completedIndices = checkpoint.completedQueryIndices;
+        List<QueryLog> queryLogs = new ArrayList<>(testSize);
         
-        // Use thread-safe set for checkpoint tracking
-        Set<Integer> completedIndices = java.util.Collections.synchronizedSet(checkpoint.completedQueryIndices);
+        // Ensure the list is pre-sized and filled with nulls to preserve order while adding out of order (if we were concurrent)
+        // Since we are sequential now, we don't strictly need this, but it guarantees ordering if indices are scrambled.
+        for (int i = 0; i < testSize; i++) queryLogs.add(null);
 
-        // M.6 Gold Standard: Zipfian Distribution Generator
-        // Simulates realistic "Head/Tail" traffic where some queries are much more
-        // frequent.
-        List<Integer> queryIndices = new ArrayList<>();
-        if (zipfianSkew > 0.01) {
-            log.info("Generating Zipfian query sequence (skew={})", zipfianSkew);
-            // Precompute weights then build CDF for O(N log N) total vs O(N²) linear scan
-            double[] weights = new double[testSize];
-            double normConst = 0.0;
-            for (int i = 0; i < testSize; i++) {
-                weights[i] = 1.0 / Math.pow(i + 1, zipfianSkew);
-                normConst += weights[i];
-            }
-            double[] cdf = new double[testSize];
-            double cumSum = 0.0;
-            for (int i = 0; i < testSize; i++) {
-                cumSum += weights[i] / normConst;
-                cdf[i] = cumSum;
-            }
-            Random rand = new Random(config.randomSeed());
-            for (int i = 0; i < testSize; i++) {
-                double p = rand.nextDouble();
-                int idx = java.util.Arrays.binarySearch(cdf, p);
-                if (idx < 0) idx = -(idx + 1);
-                queryIndices.add(Math.min(idx, testSize - 1));
-            }
-        } else {
-            // Uniform distribution (default)
-            for (int i = 0; i < testSize; i++)
-                queryIndices.add(i);
-        }
-
-        // TURBO MODE: Parallel processing with custom ForkJoinPool to prevent thread exhaustion
-        // Default ForkJoinPool can cause issues with 450K queries - use bounded pool
-        int parallelism = Math.min(Runtime.getRuntime().availableProcessors() * 2, MAX_THREAD_POOL_SIZE);
-        @SuppressWarnings("resource") // Closed in finally block
-        java.util.concurrent.ForkJoinPool customThreadPool = new java.util.concurrent.ForkJoinPool(parallelism);
+        List<Integer> queryIndices = buildQuerySequence(testSize, config);
         
-        java.util.concurrent.atomic.AtomicInteger progressCounter = new java.util.concurrent.atomic.AtomicInteger(0);
         long benchmarkStartTime = System.currentTimeMillis();
-        
-        try {
-            customThreadPool.submit(() -> {
-                queryIndices.parallelStream().forEach(index -> {
-            // Skip if already completed (checkpoint resume)
+        int done = completedIndices.size();
+
+        for (int index : queryIndices) {
             if (completedIndices.contains(index)) {
-                return;
+                continue;
             }
             
             DatasetRecord record = testSet.get(index);
+            QueryLog logEntry = processSingleQuery(record, config, index);
+            queryLogs.set(index, logEntry);
             
-            // Retry loop - NEVER FAIL! Exponential backoff for Ollama recovery
-            boolean success = false;
-            int retryCount = 0;
-            final int MAX_RETRIES = 100;
-            while (!success && retryCount < MAX_RETRIES) {
-                try {
-                    long wallClockStart = System.nanoTime();
-
-            // Select test query: paraphrase when available (stresses semantic path),
-            // otherwise fall back to the original (tests exact-match path)
-            String testQuery = record.hasParaphrase() ? record.paraphrase() : record.query();
-
-            // M.6 Gold Standard: Adversarial Noise Injection (Robustness)
-            if (config.noiseProbability() > 0.0) {
-                testQuery = noiseGenerator.injectNoise(testQuery, config.noiseProbability(), config.randomSeed());
-            }
-
-            CacheLookupResult lookupResult = cacheService.lookup(testQuery);
-
-            if (lookupResult.hit()) {
-                // ──── CACHE HIT path ──────────────────────────────────────────────
-                // The cache returned a response that satisfied similarity threshold θ.
-                // No LLM call required; total cost = 0.
-                String response = lookupResult.response();
-
-                long totalMs = (System.nanoTime() - wallClockStart) / 1_000_000;
-                metricsCollector.record(
-                        true, totalMs,
-                        lookupResult.embeddingTimeMs(), 0L,
-                        lookupResult.similarityScore(),
-                        0.0,
-                        llmService.estimateCost(testQuery, record.answer()));
-
-                queryLogMap.put(index, new QueryLog(
-                        testQuery, record.answer(), response,
-                        true, lookupResult.similarityScore(),
-                        totalMs, lookupResult.embeddingTimeMs(), 0L));
-
-            } else {
-                // ──── CACHE MISS path ─────────────────────────────────────────────
-                // No sufficiently similar entry found. Invoke LLM and store result.
-                long llmStart = System.nanoTime();
-
-                // M.6 Fix: Even if testQuery is a paraphrase, we generate the answer
-                // based on testQuery but ensure the cost is estimated fairly.
-                String response = llmService.generateSync(testQuery);
-                long llmLatencyMs = (System.nanoTime() - llmStart) / 1_000_000;
-
-                // Reuse the embedding computed during lookup to avoid redundant ONNX call
-                float[] embedding = lookupResult.queryEmbedding() != null
-                        ? lookupResult.queryEmbedding()
-                        : embeddingService.encode(testQuery);
-                cacheService.store(testQuery, embedding, response);
-
-                long totalMs = (System.nanoTime() - wallClockStart) / 1_000_000;
-
-                // Cost calculation evaluates the actual tokens generated/used.
-                double actualCost = llmService.estimateCost(testQuery, response);
-                double baselineCost = llmService.estimateCost(testQuery, record.answer());
-
-                metricsCollector.record(
-                        false, totalMs,
-                        lookupResult.embeddingTimeMs(), llmLatencyMs,
-                        0.0, actualCost, baselineCost);
-
-                queryLogMap.put(index, new ExperimentResultExporter.QueryLog(
-                        testQuery, record.answer(), response,
-                        false, 0.0,
-                        totalMs, lookupResult.embeddingTimeMs(), llmLatencyMs));
-            }
-
-            int done = progressCounter.incrementAndGet();
-            
-            // Mark query as completed and save checkpoint (thread-safe)
+            done++;
             completedIndices.add(index);
-            int checkpointFrequency = done < 100 ? CHECKPOINT_FREQUENCY_SMALL : CHECKPOINT_FREQUENCY_LARGE;
-            if (done % checkpointFrequency == 0) {
+            
+            if (shouldSaveCheckpoint(done)) {
                 checkpointManager.saveCheckpoint(checkpoint);
             }
             
-            // Health check every N queries
+            if (done % PROGRESS_REPORT_FREQUENCY == 0) {
+                reportProgress(done, testSize, benchmarkStartTime);
+            }
             if (done % HEALTH_CHECK_FREQUENCY == 0) {
                 performHealthCheck(done, testSize);
             }
-            
-            // Enhanced progress reporting every N queries
-            if (done % PROGRESS_REPORT_FREQUENCY == 0) {
-                long elapsedMs = System.currentTimeMillis() - benchmarkStartTime;
-                double progressPct = (done * 100.0) / testSize;
-                long etaMs = (long) ((elapsedMs / done) * (testSize - done));
-                long etaMinutes = etaMs / 60000;
-                
-                // Calculate current metrics
-                double currentHitRate = metricsCollector.getHitCount() * 100.0 / done;
-                double avgLatency = metricsCollector.getAverageLatency();
-                
-                log.info("Progress: {}/{} ({:.1f}%) | ETA: {}min | Hit Rate: {:.1f}% | Avg Latency: {:.0f}ms",
-                        done, testSize, progressPct, etaMinutes, currentHitRate, avgLatency);
-            }
-            
-            success = true; // Mark as successful
-            
-                } catch (Exception ex) {
-                    retryCount++;
-                    if (retryCount >= MAX_RETRIES) {
-                        log.error("Query {} failed after {} attempts. Skipping to prevent infinite loop.", 
-                                index, MAX_RETRIES);
-                        // Add placeholder log for failed query (for data completeness)
-                        queryLogMap.put(index, new ExperimentResultExporter.QueryLog(
-                                record.query(), record.answer(), "ERROR: Max retries exceeded",
-                                false, 0.0, 0L, 0L, 0L));
-                        break; // Exit retry loop after max attempts
-                    }
-                    
-                    // Exponential backoff: 5s, 10s, 20s, 40s, ... (max 60s)
-                    long backoffMs = Math.min(5000L * (1L << (retryCount - 1)), 60000L);
-                    log.warn("Query {} failed (attempt {}/{}): {}. Retrying in {}s...", 
-                            index, retryCount, MAX_RETRIES, ex.getMessage(), backoffMs / 1000);
-                    
-                    try {
-                        Thread.sleep(backoffMs);
-                    } catch (InterruptedException ie) {
-                        Thread.currentThread().interrupt();
-                        break; // Exit if interrupted
-                    }
-                    // Loop continues - NEVER GIVE UP (until max retries)!
-                }
-            } // end while
-                });
-            }).get(); // Wait for completion
-        } catch (Exception e) {
-            log.error("Parallel processing failed: {}", e.getMessage(), e);
-        } finally {
-            customThreadPool.shutdown();
-            try {
-                if (!customThreadPool.awaitTermination(THREAD_POOL_SHUTDOWN_TIMEOUT_SECONDS, java.util.concurrent.TimeUnit.SECONDS)) {
-                    customThreadPool.shutdownNow();
-                }
-            } catch (InterruptedException e) {
-                customThreadPool.shutdownNow();
-                Thread.currentThread().interrupt();
-            }
         }
-
-        log.info("Test phase complete: {} queries processed", testSet.size());
         
-        // CRITICAL FIX: Convert ConcurrentHashMap to ordered List for reproducibility
-        // Q1 journals require deterministic output - sort by original query index
-        List<QueryLog> queryLogs = new ArrayList<>(testSize);
-        for (int i = 0; i < testSize; i++) {
-            QueryLog log = queryLogMap.get(i);
-            if (log != null) {
-                queryLogs.add(log);
-            }
-        }
+        log.info("Test phase complete: {} queries processed", testSize);
+        
+        // Remove nulls (if any queries were absolutely skipped, which shouldn't happen)
+        queryLogs.removeIf(l -> l == null);
         
         log.info("Query logs collected: {} entries (expected: {})", queryLogs.size(), testSize);
         return queryLogs;
     }
-    
-    /**
-     * Performs health check to ensure system is healthy for continued operation.
-     * Checks: memory, disk space, thread count, Redis connectivity.
-     * If unhealthy, logs warning but continues (graceful degradation).
-     */
+
+    private List<Integer> buildQuerySequence(int testSize, ExperimentConfig config) {
+        if (zipfianSkew > 0.01) {
+            log.info("Generating Zipfian query sequence (skew={})", zipfianSkew);
+            return ZipfianDistribution.generateIndices(testSize, testSize, zipfianSkew, config.randomSeed());
+        } else {
+            List<Integer> indices = new ArrayList<>(testSize);
+            for (int i = 0; i < testSize; i++) indices.add(i);
+            return indices;
+        }
+    }
+
+    private QueryLog processSingleQuery(DatasetRecord record, ExperimentConfig config, int index) {
+        boolean success = false;
+        int retryCount = 0;
+        int maxRetries = (llmService instanceof MockGeminiService) ? 0 : 5;
+        
+        while (!success && retryCount <= maxRetries) {
+            try {
+                long wallClockStart = System.nanoTime();
+
+                String testQuery = record.hasParaphrase() ? record.paraphrase() : record.query();
+                if (config.noiseProbability() > 0.0) {
+                    testQuery = noiseGenerator.injectNoise(testQuery, config.noiseProbability(), config.randomSeed());
+                }
+
+                CacheLookupResult lookupResult = cacheService.lookup(testQuery);
+
+                if (lookupResult.hit()) {
+                    String response = lookupResult.response();
+                    long totalMs = (System.nanoTime() - wallClockStart) / 1_000_000;
+                    
+                    metricsCollector.record(
+                            true, totalMs,
+                            lookupResult.embeddingTimeMs(), 0L,
+                            lookupResult.similarityScore(),
+                            0.0,
+                            llmService.estimateCost(testQuery, record.answer()));
+
+                    return new QueryLog(
+                            testQuery, record.answer(), response,
+                            true, lookupResult.similarityScore(),
+                            totalMs, lookupResult.embeddingTimeMs(), 0L);
+
+                } else {
+                    long llmStart = System.nanoTime();
+                    String response = llmService.generateSync(testQuery);
+                    long llmLatencyMs = (System.nanoTime() - llmStart) / 1_000_000;
+
+                    float[] embedding = lookupResult.queryEmbedding() != null
+                            ? lookupResult.queryEmbedding()
+                            : embeddingService.encode(testQuery);
+                    cacheService.store(testQuery, embedding, response);
+
+                    long totalMs = (System.nanoTime() - wallClockStart) / 1_000_000;
+                    double actualCost = llmService.estimateCost(testQuery, response);
+                    double baselineCost = llmService.estimateCost(testQuery, record.answer());
+
+                    metricsCollector.record(
+                            false, totalMs,
+                            lookupResult.embeddingTimeMs(), llmLatencyMs,
+                            0.0, actualCost, baselineCost);
+
+                    return new QueryLog(
+                            testQuery, record.answer(), response,
+                            false, 0.0,
+                            totalMs, lookupResult.embeddingTimeMs(), llmLatencyMs);
+                }
+            } catch (Exception ex) {
+                retryCount++;
+                if (retryCount > maxRetries) {
+                    log.error("Query {} failed after {} attempts.", index, maxRetries);
+                    return new QueryLog(
+                            record.query(), record.answer(), "ERROR: Max retries exceeded",
+                            false, 0.0, 0L, 0L, 0L);
+                }
+                long backoffMs = Math.min(5000L * (1L << (retryCount - 1)), 60000L);
+                log.warn("Query {} failed (attempt {}/{}): {}. Retrying in {}s...", 
+                        index, retryCount, maxRetries, ex.getMessage(), backoffMs / 1000);
+                try {
+                    Thread.sleep(backoffMs);
+                } catch (InterruptedException ie) {
+                    Thread.currentThread().interrupt();
+                    break;
+                }
+            }
+        }
+        return null;
+    }
+
+    private boolean shouldSaveCheckpoint(int done) {
+        int checkpointFrequency = done < 100 ? CHECKPOINT_FREQUENCY_SMALL : CHECKPOINT_FREQUENCY_LARGE;
+        return done % checkpointFrequency == 0;
+    }
+
+    private void reportProgress(int done, int testSize, long benchmarkStartTime) {
+        long elapsedMs = System.currentTimeMillis() - benchmarkStartTime;
+        double progressPct = (done * 100.0) / testSize;
+        long etaMs = (long) ((elapsedMs / done) * (testSize - done));
+        long etaMinutes = etaMs / 60000;
+        
+        double currentHitRate = metricsCollector.getHitCount() * 100.0 / done;
+        double avgLatency = metricsCollector.getAverageLatency();
+        
+        log.info("Progress: {}/{} ({}%) | ETA: {}min | Hit Rate: {}% | Avg Latency: {}ms",
+                done, testSize, 
+                String.format(java.util.Locale.US, "%.1f", progressPct), 
+                etaMinutes, 
+                String.format(java.util.Locale.US, "%.1f", currentHitRate), 
+                String.format(java.util.Locale.US, "%.0f", avgLatency));
+    }
+
     private void performHealthCheck(int queriesCompleted, int totalQueries) {
         try {
-            // 1. Memory check
             Runtime runtime = Runtime.getRuntime();
             long usedMemory = runtime.totalMemory() - runtime.freeMemory();
             long maxMemory = runtime.maxMemory();
             double memoryUsagePercent = (usedMemory * 100.0) / maxMemory;
             
             if (memoryUsagePercent > 90) {
-                log.warn("⚠️ HIGH MEMORY USAGE: {:.1f}% ({} MB / {} MB)", 
-                        memoryUsagePercent, usedMemory / (1024 * 1024), maxMemory / (1024 * 1024));
-                // Suggest GC
-                System.gc();
+                log.warn("HIGH MEMORY USAGE detected: {}% ({} MB / {} MB). Consider increasing -Xmx.", 
+                        String.format(java.util.Locale.US, "%.1f", memoryUsagePercent), 
+                        usedMemory / (1024 * 1024), maxMemory / (1024 * 1024));
             }
             
-            // 2. Disk space check
             File resultsDir = new File("results");
             long freeSpaceMB = resultsDir.getFreeSpace() / (1024 * 1024);
             if (freeSpaceMB < 1000) {
-                log.warn("⚠️ LOW DISK SPACE: {} MB free (recommend 1GB+)", freeSpaceMB);
+                log.warn("LOW DISK SPACE: {} MB free (recommend 1GB+)", freeSpaceMB);
             }
             
-            // 3. Thread count check
             int threadCount = Thread.activeCount();
             if (threadCount > 100) {
-                log.warn("⚠️ HIGH THREAD COUNT: {} active threads", threadCount);
+                log.warn("HIGH THREAD COUNT: {} active threads", threadCount);
             }
-            
-            // 4. Progress sanity check
-            double progressPercent = (queriesCompleted * 100.0) / totalQueries;
-            if (progressPercent > 0 && progressPercent < 100) {
-                log.debug("✅ Health check passed: Memory {:.1f}%, Disk {} MB, Threads {}", 
-                        memoryUsagePercent, freeSpaceMB, threadCount);
-            }
-            
         } catch (Exception e) {
             log.warn("Health check failed: {}", e.getMessage());
         }
     }
+
 }

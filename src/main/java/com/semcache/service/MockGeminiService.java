@@ -7,8 +7,8 @@ import org.springframework.stereotype.Service;
 import reactor.core.publisher.Mono;
 
 import java.time.Duration;
-import java.util.HashMap;
 import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ThreadLocalRandom;
 
 /**
@@ -25,7 +25,7 @@ public class MockGeminiService implements LLMService {
     private static final double INPUT_COST_PER_M = 0.10;
     private static final double OUTPUT_COST_PER_M = 0.40;
 
-    private final Map<String, String> groundTruthRegistry = new HashMap<>();
+    private final Map<String, String> groundTruthRegistry = new ConcurrentHashMap<>();
 
     public void registerGroundTruth(String query, String response) {
         groundTruthRegistry.put(query, response);
