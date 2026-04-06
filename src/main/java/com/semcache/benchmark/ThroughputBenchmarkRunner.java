@@ -49,7 +49,7 @@ public class ThroughputBenchmarkRunner {
      */
     public void runForUsers(int concurrentUsers,
             java.util.List<com.semcache.benchmark.DatasetLoader.DatasetRecord> dataset, String outputFile,
-            long experimentSeed)
+            long experimentSeed, String datasetName, String strategy)
             throws Exception {
         log.info("=== Throughput Test: {} concurrent users ===", concurrentUsers);
 
@@ -86,14 +86,33 @@ public class ThroughputBenchmarkRunner {
                 String.format(java.util.Locale.US, "%.2f", result.avgLatencyMs()),
                 result.p99Ms());
 
-        // 4. Save result to JSON if output file specified
+        // 4. Save result to JSON with enhanced metadata for Q1 analysis
         if (outputFile != null) {
             File f = new File(outputFile);
             File parent = f.getParentFile();
             if (parent != null && !parent.exists() && !parent.mkdirs()) {
                 log.warn("Could not create output directory: {}", parent);
             }
-            objectMapper.writeValue(f, result);
+            
+            // Create enhanced result with metadata for statistical analysis
+            Map<String, Object> enhancedResult = new LinkedHashMap<>();
+            enhancedResult.put("dataset", datasetName != null ? datasetName : "unknown");
+            enhancedResult.put("seed", experimentSeed);
+            enhancedResult.put("strategy", strategy != null ? strategy : properties.getStrategy());
+            enhancedResult.put("embeddingModel", properties.getEmbeddingModel() != null ? properties.getEmbeddingModel() : "minilm");
+            enhancedResult.put("concurrentUsers", result.concurrentUsers());
+            enhancedResult.put("totalRequests", result.totalRequests());
+            enhancedResult.put("throughput", result.rps());
+            enhancedResult.put("avgLatencyMs", result.avgLatencyMs());
+            enhancedResult.put("p99LatencyMs", result.p99Ms());
+            enhancedResult.put("timestamp", System.currentTimeMillis());
+            enhancedResult.put("threshold", properties.getSimilarityThreshold() != null ? properties.getSimilarityThreshold() : 0.90);
+            
+            // Estimate hit rate from cache statistics (if available)
+            // This is a placeholder - actual hit rate should come from cache service
+            enhancedResult.put("hitRate", 0.0); // Will be updated by cache service
+            
+            objectMapper.writerWithDefaultPrettyPrinter().writeValue(f, enhancedResult);
             log.info("Throughput result saved to: {}", outputFile);
         }
     }

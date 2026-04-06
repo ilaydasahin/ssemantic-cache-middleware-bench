@@ -53,6 +53,46 @@ public class BaselineComparator {
     }
     
     /**
+     * Generates a simplified baseline comparison for throughput mode.
+     * 
+     * @param semanticThroughput Throughput with semantic cache (rps)
+     * @param exactMatchThroughput Throughput with exact-match (rps)
+     * @param semanticLatency P99 latency with semantic cache (ms)
+     * @param exactMatchLatency P99 latency with exact-match (ms)
+     * @return Formatted comparison map
+     */
+    public Map<String, Object> generateSimplifiedComparison(
+            double semanticThroughput, double exactMatchThroughput,
+            double semanticLatency, double exactMatchLatency,
+            double semanticHitRate, double exactMatchHitRate) {
+        
+        Map<String, Object> report = new LinkedHashMap<>();
+        
+        // Throughput comparison
+        double throughputImprovement = ((semanticThroughput - exactMatchThroughput) / exactMatchThroughput) * 100.0;
+        report.put("throughputImprovement", round2(throughputImprovement));
+        report.put("semanticThroughput", round2(semanticThroughput));
+        report.put("exactMatchThroughput", round2(exactMatchThroughput));
+        
+        // Latency comparison
+        double latencyImprovement = ((exactMatchLatency - semanticLatency) / exactMatchLatency) * 100.0;
+        report.put("latencyImprovement", round2(latencyImprovement));
+        report.put("semanticLatency", round2(semanticLatency));
+        report.put("exactMatchLatency", round2(exactMatchLatency));
+        
+        // Hit rate comparison
+        double hitRateGain = semanticHitRate - exactMatchHitRate;
+        report.put("hitRateGain", round2(hitRateGain));
+        report.put("semanticHitRate", round2(semanticHitRate));
+        report.put("exactMatchHitRate", round2(exactMatchHitRate));
+        
+        log.info("Baseline comparison: Throughput improvement: {}%, Hit rate gain: {}%",
+                round2(throughputImprovement), round2(hitRateGain));
+        
+        return report;
+    }
+    
+    /**
      * Generates a baseline comparison report for publication.
      * 
      * @param experimentalMetrics Metrics from semantic cache run

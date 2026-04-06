@@ -82,7 +82,9 @@ public class BenchmarkCommandLineRunner implements CommandLineRunner {
             log.info("Loading dataset {} for throughput test...", datasetConfig.getName());
             java.util.List<DatasetLoader.DatasetRecord> dataset = datasetLoader.load(datasetConfig.getPath());
             long seed = properties.getCurrentSeed() != null ? properties.getCurrentSeed().longValue() : 42L;
-            throughputRunner.runForUsers(singleConcurrentUsers, dataset, properties.getOutputFile(), seed);
+            String strategy = properties.getStrategy() != null ? properties.getStrategy() : "SEMANTIC";
+            throughputRunner.runForUsers(singleConcurrentUsers, dataset, properties.getOutputFile(), seed, 
+                                        datasetConfig.getName(), strategy);
             System.exit(SpringApplication.exit(applicationContext, () -> 0));
             return;
         }
