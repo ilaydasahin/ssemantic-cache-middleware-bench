@@ -111,7 +111,7 @@ benchmark:
   seeds: [42, 123, 456, 789, 1024]
   
   # Concurrent user levels for throughput test
-  concurrent-users: [50, 100, 500, 1000]
+  concurrent-users: [10, 25, 50, 100]
   
   # S3: Configurable warmup ratio (fraction of dataset used for cache pre-population)
   warmup-ratio: 0.30
@@ -121,7 +121,13 @@ benchmark:
   
   # Adversarial noise injection probability [0,1] (§5.6)
   noise-probability: 0.0
-  
+
+  # Throughput test parameters (§5.7) — previously hardcoded, now configurable (M.8)
+  # Total number of requests per throughput trial
+  throughput-total-requests: 2000
+  # Zipfian exponent for throughput query generation; 0.9–1.2 is realistic for search workloads
+  throughput-zipf-exponent: 1.1
+
   # Execution tuning
   batch-size: 100
   parallelism: 4
@@ -178,3 +184,19 @@ spring:
     # Benchmarks run as CommandLineRunner — no HTTP endpoint needed.
     # This prevents port 8181 conflicts between consecutive experiment runs.
     web-application-type: NONE
+
+---
+# ============================================
+# Benchmark Mock Profile — 0-cost LLM simulation
+# ============================================
+# Activated via: -Dspring.profiles.active=benchmark,benchmark-mock
+# Uses MockGeminiService with ground-truth registry instead of real LLM API.
+# All LLM calls return pre-registered ground-truth answers from the dataset.
+spring:
+  config:
+    activate:
+      on-profile: benchmark-mock
+
+# Override LLM provider to indicate mock mode is active
+llm:
+  provider: mock

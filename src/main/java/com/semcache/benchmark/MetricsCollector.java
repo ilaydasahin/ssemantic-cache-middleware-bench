@@ -56,9 +56,9 @@ public class MetricsCollector {
      * @param baselineCost      Estimated cost if no cache were in use
      */
     public void record(boolean hit,
-                       long    totalLatencyMs,
-                       long    embeddingLatencyMs,
-                       long    llmLatencyMs,
+                       double  totalLatencyMs,
+                       double  embeddingLatencyMs,
+                       double  llmLatencyMs,
                        double  similarityScore,
                        double  actualCost,
                        double  baselineCost) {
@@ -68,8 +68,10 @@ public class MetricsCollector {
                 similarityScore, actualCost, baselineCost));
 
         // O(1) counters for fast progress reporting (avoids O(n) stream scans)
+        // latencySum stores truncated ms (acceptable precision for live display only;
+        // scientific percentile computation uses the double-precision observation list).
         if (hit) hitCounter.incrementAndGet();
-        latencySum.addAndGet(totalLatencyMs);
+        latencySum.addAndGet((long) totalLatencyMs);
     }
 
     /**
@@ -90,18 +92,18 @@ public class MetricsCollector {
         // Single pass over observations — collect all accumulators at once
         // Use synchronized block to prevent ConcurrentModificationException
         int    totalQueries;
-        int    cacheHits         = 0;
-        long   sumEmbeddingMs    = 0L;
-        long   sumLlmMs          = 0L;
-        int    missCount         = 0;
-        double totalActualCost   = 0.0;
-        double totalBaselineCost = 0.0;
-        List<Long> allLatencies;
-        
+        int    cacheHits           = 0;
+        double sumEmbeddingMs      = 0.0;
+        double sumLlmMs            = 0.0;
+        int    missCount           = 0;
+        double totalActualCost     = 0.0;
+        double totalBaselineCost   = 0.0;
+        List<Double> allLatencies;
+
         synchronized (observations) {
             totalQueries = observations.size();
             allLatencies = new ArrayList<>(totalQueries);
-            
+
             for (Observation o : observations) {
                 allLatencies.add(o.totalLatencyMs());
                 sumEmbeddingMs    += o.embeddingLatencyMs();
@@ -191,7 +193,7 @@ public class MetricsCollector {
      * @param percentile   Target percentile in [1, 100]
      * @return The corresponding percentile value, or 0 if the list is empty
      */
-    static double nearestRankPercentile(List<Long> sortedValues, double percentile) {
+    static double nearestRankPercentile(List<Double> sortedValues, double percentile) {
         if (sortedValues.isEmpty()) return 0.0;
         int n       = sortedValues.size();
         int index   = (int) Math.ceil(percentile / 100.0 * n) - 1;
@@ -232,9 +234,9 @@ public class MetricsCollector {
     /** Raw per-query measurement captured during a single experimental trial. */
     record Observation(
             boolean hit,
-            long    totalLatencyMs,
-            long    embeddingLatencyMs,
-            long    llmLatencyMs,
+            double  totalLatencyMs,
+            double  embeddingLatencyMs,
+            double  llmLatencyMs,
             double  similarityScore,
             double  actualCost,
             double  baselineCost) {}

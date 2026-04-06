@@ -2,6 +2,7 @@ package com.semcache.benchmark;
 
 import com.semcache.service.EmbeddingService;
 import com.semcache.service.SemanticCacheService;
+import com.semcache.config.BenchmarkProperties;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -29,13 +30,16 @@ public class ThroughputBenchmarkRunner {
     private final SemanticCacheService cacheService;
     private final EmbeddingService embeddingService;
     private final ObjectMapper objectMapper;
+    private final BenchmarkProperties properties;
 
     public ThroughputBenchmarkRunner(SemanticCacheService cacheService,
             EmbeddingService embeddingService,
-            ObjectMapper objectMapper) {
+            ObjectMapper objectMapper,
+            BenchmarkProperties properties) {
         this.cacheService = cacheService;
         this.embeddingService = embeddingService;
         this.objectMapper = objectMapper;
+        this.properties = properties;
     }
 
     /**
@@ -64,8 +68,10 @@ public class ThroughputBenchmarkRunner {
 
         // 2. Generate test queries using Zipfian distribution (M.6 External Validity)
         // Real-world systems exhibit skew: a few queries are extremely popular.
-        int totalRequests = 2000;
-        double zipfExponent = 1.1; // Typical value for web/search workloads
+        int totalRequests = properties.getThroughputTotalRequests() != null 
+                             ? properties.getThroughputTotalRequests() : 2000;
+        double zipfExponent = properties.getThroughputZipfExponent() != null 
+                             ? properties.getThroughputZipfExponent() : 1.1;
 
         log.info("Generating {} test requests following Zipfian distribution (s={}) over {} pool...",
                 totalRequests, zipfExponent, poolSize);
@@ -135,10 +141,10 @@ public class ThroughputBenchmarkRunner {
         for (long v : latenciesNs) sumNs += v;
         double avgLatencyNs = latenciesNs.length > 0 ? (double) sumNs / latenciesNs.length : 0.0;
         
-        // Convert to List<Long> for percentile calculation
-        List<Long> latenciesList = new ArrayList<>(latenciesNs.length);
-        for (long v : latenciesNs) latenciesList.add(v);
-        long p99Ns = (long) MetricsCollector.nearestRankPercentile(latenciesList, 99);
+        // Convert to List<Double> for percentile calculation
+        List<Double> latenciesList = new ArrayList<>(latenciesNs.length);
+        for (long v : latenciesNs) latenciesList.add((double) v);
+        long p99Ns = (long) MetricsCollector.nearestRankPercentile(latenciesList, 99.0);
 
         return new ThroughputResult(concurrency, totalRequests, rps, avgLatencyNs / 1_000_000.0, p99Ns / 1_000_000);
     }

@@ -33,6 +33,16 @@ public class BenchmarkProperties {
     private Double noiseProbability;
     private Boolean heavyChurn;
     private Long ttlSeconds;
+    private String embeddingModel;
+    private String mode;
+
+    /** Total number of requests per throughput test trial (default: 2000). */
+    private Integer throughputTotalRequests;
+    /**
+     * Zipfian exponent for throughput query generation (default: 1.1).
+     * Typical values for web/search workloads: 0.9–1.2 (§5.4).
+     */
+    private Double throughputZipfExponent;
 
     public Boolean isHeavyChurn() {
         return heavyChurn;
@@ -208,5 +218,37 @@ public class BenchmarkProperties {
 
     public void setTtlSeconds(Long ttlSeconds) {
         this.ttlSeconds = ttlSeconds;
+    }
+
+    public String getEmbeddingModel() {
+        return embeddingModel;
+    }
+
+    public void setEmbeddingModel(String embeddingModel) {
+        this.embeddingModel = embeddingModel;
+    }
+
+    public String getMode() {
+        return mode;
+    }
+
+    public void setMode(String mode) {
+        this.mode = mode;
+    }
+
+    public Integer getThroughputTotalRequests() {
+        return throughputTotalRequests;
+    }
+
+    public void setThroughputTotalRequests(Integer throughputTotalRequests) {
+        this.throughputTotalRequests = throughputTotalRequests;
+    }
+
+    public Double getThroughputZipfExponent() {
+        return throughputZipfExponent;
+    }
+
+    public void setThroughputZipfExponent(Double throughputZipfExponent) {
+        this.throughputZipfExponent = throughputZipfExponent;
     }
 }

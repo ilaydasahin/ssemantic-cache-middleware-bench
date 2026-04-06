@@ -11,7 +11,7 @@ import com.semcache.service.MockGeminiService;
 import com.semcache.service.SemanticCacheService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.beans.factory.annotation.Value;
+
 import org.springframework.stereotype.Component;
 
 import java.util.ArrayList;
@@ -61,26 +61,11 @@ public class BenchmarkRunner {
 
     private static final Logger log = LoggerFactory.getLogger(BenchmarkRunner.class);
     
-    // Configuration constants (extracted from magic numbers)
-    private static final int HEALTH_CHECK_FREQUENCY = 100; // queries
-    private static final int PROGRESS_REPORT_FREQUENCY = 100; // queries
-    private static final int CHECKPOINT_FREQUENCY_SMALL = 25;
-    private static final int CHECKPOINT_FREQUENCY_LARGE = 100;
-    
-    // Memory and resource limitse experiment parameter (S3: no hardcoded constants) ────────
-    /**
-     * Fraction of the dataset used for cache warming. Injected from
-     * {@code application.yml}.
-     */
-    @Value("${benchmark.warmup-ratio:0.30}")
-    private double warmupRatio;
-
-    /**
-     * Zipfian skew parameter (s). 0.0 means uniform distribution. Q1 Gold Standard:
-     * 0.7-1.0.
-     */
-    @Value("${benchmark.zipfian-skew:0.0}")
-    private double zipfianSkew;
+    // ── Experiment constants (extracted from magic numbers) ────────────────
+    private static final int HEALTH_CHECK_FREQUENCY      = 100; // queries
+    private static final int PROGRESS_REPORT_FREQUENCY   = 100; // queries
+    private static final int CHECKPOINT_FREQUENCY_SMALL  = 25;
+    private static final int CHECKPOINT_FREQUENCY_LARGE  = 100;
 
     // ── Dependencies ──────────────────────────────────────────────────────────
     private final SemanticCacheService cacheService;
@@ -142,7 +127,7 @@ public class BenchmarkRunner {
         List<DatasetRecord> fullDataset = datasetLoader.load(config.datasetPath());
         List<DatasetRecord> sampledDataset = datasetLoader.shuffleAndSample(
                 fullDataset, config.randomSeed(), config.sampleSize());
-        DatasetSplit split = datasetLoader.split(sampledDataset, warmupRatio);
+        DatasetSplit split = datasetLoader.split(sampledDataset, config.warmupRatio());
 
         log.info("Dataset ready: warmup={}, test={}", split.warmupSet().size(), split.testSet().size());
         
@@ -344,9 +329,9 @@ public class BenchmarkRunner {
     }
 
     private List<Integer> buildQuerySequence(int testSize, ExperimentConfig config) {
-        if (zipfianSkew > 0.01) {
-            log.info("Generating Zipfian query sequence (skew={})", zipfianSkew);
-            return ZipfianDistribution.generateIndices(testSize, testSize, zipfianSkew, config.randomSeed());
+        if (config.zipfianSkew() > 0.01) {
+            log.info("Generating Zipfian query sequence (skew={})", config.zipfianSkew());
+            return ZipfianDistribution.generateIndices(testSize, testSize, config.zipfianSkew(), config.randomSeed());
         } else {
             List<Integer> indices = new ArrayList<>(testSize);
             for (int i = 0; i < testSize; i++) indices.add(i);
@@ -358,7 +343,7 @@ public class BenchmarkRunner {
         boolean success = false;
         int retryCount = 0;
         int maxRetries = (llmService instanceof MockGeminiService) ? 0 : 5;
-        
+
         while (!success && retryCount <= maxRetries) {
             try {
                 long wallClockStart = System.nanoTime();
@@ -372,11 +357,11 @@ public class BenchmarkRunner {
 
                 if (lookupResult.hit()) {
                     String response = lookupResult.response();
-                    long totalMs = (System.nanoTime() - wallClockStart) / 1_000_000;
-                    
+                    double totalMs = (System.nanoTime() - wallClockStart) / 1_000_000.0;
+                    double embeddingMs = lookupResult.embeddingTimeMs() / 1_000_000.0;
+
                     metricsCollector.record(
-                            true, totalMs,
-                            lookupResult.embeddingTimeMs(), 0L,
+                            true, totalMs, embeddingMs, 0.0,
                             lookupResult.similarityScore(),
                             0.0,
                             llmService.estimateCost(testQuery, record.answer()));
@@ -384,52 +369,59 @@ public class BenchmarkRunner {
                     return new QueryLog(
                             testQuery, record.answer(), response,
                             true, lookupResult.similarityScore(),
-                            totalMs, lookupResult.embeddingTimeMs(), 0L);
+                            totalMs, embeddingMs, 0.0);
 
                 } else {
                     long llmStart = System.nanoTime();
                     String response = llmService.generateSync(testQuery);
-                    long llmLatencyMs = (System.nanoTime() - llmStart) / 1_000_000;
+                    double llmLatencyMs = (System.nanoTime() - llmStart) / 1_000_000.0;
 
                     float[] embedding = lookupResult.queryEmbedding() != null
                             ? lookupResult.queryEmbedding()
                             : embeddingService.encode(testQuery);
                     cacheService.store(testQuery, embedding, response);
 
-                    long totalMs = (System.nanoTime() - wallClockStart) / 1_000_000;
+                    double totalMs = (System.nanoTime() - wallClockStart) / 1_000_000.0;
+                    double embeddingMs = lookupResult.embeddingTimeMs() / 1_000_000.0;
                     double actualCost = llmService.estimateCost(testQuery, response);
                     double baselineCost = llmService.estimateCost(testQuery, record.answer());
 
                     metricsCollector.record(
-                            false, totalMs,
-                            lookupResult.embeddingTimeMs(), llmLatencyMs,
+                            false, totalMs, embeddingMs, llmLatencyMs,
                             0.0, actualCost, baselineCost);
 
                     return new QueryLog(
                             testQuery, record.answer(), response,
                             false, 0.0,
-                            totalMs, lookupResult.embeddingTimeMs(), llmLatencyMs);
+                            totalMs, embeddingMs, llmLatencyMs);
                 }
             } catch (Exception ex) {
                 retryCount++;
                 if (retryCount > maxRetries) {
                     log.error("Query {} failed after {} attempts.", index, maxRetries);
+                    // Ö-4 fix: never return null — always return a structured ERROR entry
                     return new QueryLog(
                             record.query(), record.answer(), "ERROR: Max retries exceeded",
-                            false, 0.0, 0L, 0L, 0L);
+                            false, 0.0, 0.0, 0.0, 0.0);
                 }
                 long backoffMs = Math.min(5000L * (1L << (retryCount - 1)), 60000L);
-                log.warn("Query {} failed (attempt {}/{}): {}. Retrying in {}s...", 
+                log.warn("Query {} failed (attempt {}/{}): {}. Retrying in {}s...",
                         index, retryCount, maxRetries, ex.getMessage(), backoffMs / 1000);
                 try {
                     Thread.sleep(backoffMs);
                 } catch (InterruptedException ie) {
                     Thread.currentThread().interrupt();
-                    break;
+                    // Ö-4 fix: interrupted — return ERROR entry instead of null
+                    return new QueryLog(
+                            record.query(), record.answer(), "ERROR: Interrupted",
+                            false, 0.0, 0.0, 0.0, 0.0);
                 }
             }
         }
-        return null;
+        // Should never reach here, but return ERROR instead of null as safety net
+        return new QueryLog(
+                record.query(), record.answer(), "ERROR: Unexpected exit",
+                false, 0.0, 0.0, 0.0, 0.0);
     }
 
     private boolean shouldSaveCheckpoint(int done) {

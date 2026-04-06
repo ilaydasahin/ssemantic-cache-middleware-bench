@@ -55,7 +55,7 @@ public class EvictionStressTestRunner {
         cacheService.clearCache();
         log.info("Commencing strict sequential injection of {} records to trigger eviction...", testCount);
 
-        List<Long> insertLatenciesNs = new ArrayList<>(testCount);
+        List<Double> insertLatenciesNs = new ArrayList<>(testCount);
         long sumNs    = 0L;
         long startTime = System.nanoTime();
 
@@ -68,7 +68,7 @@ public class EvictionStressTestRunner {
             cacheService.store(q, v, a);
             long elapsed = System.nanoTime() - startOp;
 
-            insertLatenciesNs.add(elapsed);
+            insertLatenciesNs.add((double) elapsed);
             sumNs += elapsed;
 
             // Brief pause to allow background threads to interleave naturally
@@ -80,9 +80,9 @@ public class EvictionStressTestRunner {
 
         Collections.sort(insertLatenciesNs);
         double avgNs = (double) sumNs / testCount;
-        long p50Ns  = (long) MetricsCollector.nearestRankPercentile(insertLatenciesNs, 50.0);
-        long p99Ns  = (long) MetricsCollector.nearestRankPercentile(insertLatenciesNs, 99.0);
-        long p999Ns = (long) MetricsCollector.nearestRankPercentile(insertLatenciesNs, 99.9);
+        double p50Ns  = MetricsCollector.nearestRankPercentile(insertLatenciesNs, 50.0);
+        double p99Ns  = MetricsCollector.nearestRankPercentile(insertLatenciesNs, 99.0);
+        double p999Ns = MetricsCollector.nearestRankPercentile(insertLatenciesNs, 99.9);
 
         log.info("Eviction Stress Test Complete in {}ms", totalTimeMs);
         log.info("Insertion Latency (ms): Avg={}, p50={}, p99={}, p99.9={}",

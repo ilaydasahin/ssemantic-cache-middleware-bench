@@ -9,6 +9,11 @@ import org.springframework.context.ApplicationContext;
 import org.springframework.context.annotation.Profile;
 import org.springframework.stereotype.Component;
 
+import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
+import java.util.Arrays;
+import java.util.List;
+
 @Component
 @Profile("benchmark")
 public class BenchmarkCommandLineRunner implements CommandLineRunner {
@@ -18,6 +23,7 @@ public class BenchmarkCommandLineRunner implements CommandLineRunner {
     private final BenchmarkRunner benchmarkRunner;
     private final ThroughputBenchmarkRunner throughputRunner;
     private final EvictionStressTestRunner stressTestRunner;
+    private final MegaBenchmarkSuiteRunner megaRunner;
     private final BenchmarkProperties properties;
     private final DatasetLoader datasetLoader;
     private final ApplicationContext applicationContext;
@@ -25,12 +31,14 @@ public class BenchmarkCommandLineRunner implements CommandLineRunner {
     public BenchmarkCommandLineRunner(BenchmarkRunner benchmarkRunner,
             ThroughputBenchmarkRunner throughputRunner,
             EvictionStressTestRunner stressTestRunner,
+            MegaBenchmarkSuiteRunner megaRunner,
             BenchmarkProperties properties,
             DatasetLoader datasetLoader,
             ApplicationContext applicationContext) {
         this.benchmarkRunner = benchmarkRunner;
         this.throughputRunner = throughputRunner;
         this.stressTestRunner = stressTestRunner;
+        this.megaRunner = megaRunner;
         this.properties = properties;
         this.datasetLoader = datasetLoader;
         this.applicationContext = applicationContext;
@@ -38,6 +46,26 @@ public class BenchmarkCommandLineRunner implements CommandLineRunner {
 
     @Override
     public void run(String... args) throws Exception {
+        // Ö-3: Verify Python scripts availability to ensure post-hoc analysis can run
+        java.io.File analyzeScript = new java.io.File("scripts/analyze_results.py");
+        if (!analyzeScript.exists()) {
+            log.warn("WARNING: scripts/analyze_results.py not found. Post-hoc compute for avgBertScore/avgRougeL will fail, leaving nulls in outputs.");
+        }
+
+        // ── MEGA MODE (Q1 Grade — single JVM, full matrix) ───────────────────
+        if ("mega".equalsIgnoreCase(properties.getMode())) {
+            log.info("MEGA mode activated — running full experiment matrix in single JVM");
+            try {
+                runMegaBenchmark();
+                System.exit(SpringApplication.exit(applicationContext, () -> 0));
+            } catch (Exception e) {
+                log.error("MEGA benchmark failed: {}", e.getMessage(), e);
+                System.exit(SpringApplication.exit(applicationContext, () -> 1));
+            }
+            return;
+        }
+
+        // ── Legacy modes (unchanged) ─────────────────────────────────────────
 
         if (properties.isHeavyChurn() != null && properties.isHeavyChurn()) {
             log.info("Heavy churn mode enabled.");
@@ -107,6 +135,46 @@ public class BenchmarkCommandLineRunner implements CommandLineRunner {
             System.exit(SpringApplication.exit(applicationContext, () -> 1));
         }
     }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // Mega Benchmark Orchestration
+    // ─────────────────────────────────────────────────────────────────────────
+
+    /**
+     * Parses mega-mode parameters from BenchmarkProperties and delegates to
+     * MegaBenchmarkSuiteRunner.
+     */
+    private void runMegaBenchmark() throws Exception {
+        // Strategies: from CLI --benchmark.strategy or default to all three
+        List<String> strategies;
+        if (properties.getStrategy() != null && !properties.getStrategy().isBlank()) {
+            strategies = Arrays.asList(properties.getStrategy().split(","));
+        } else {
+            strategies = List.of("EXACT_MATCH", "SEMANTIC", "HYBRID");
+        }
+
+        // Seeds: from application.yml benchmark.seeds
+        List<Integer> seeds = properties.getSeeds();
+        if (seeds == null || seeds.isEmpty()) {
+            seeds = List.of(42, 123, 456, 789, 1024);
+        }
+
+        // Concurrent users: from application.yml benchmark.concurrent-users
+        List<Integer> concurrentUsers = properties.getConcurrentUsers();
+        if (concurrentUsers == null || concurrentUsers.isEmpty()) {
+            concurrentUsers = List.of(10, 25, 50, 100);
+        }
+
+        // Results directory with timestamp
+        String timestamp = LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyyMMdd_HHmmss"));
+        String resultsDir = String.format("results/mega_%s", timestamp);
+
+        megaRunner.runFullSuite(strategies, seeds, concurrentUsers, resultsDir);
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // Private helpers (unchanged)
+    // ─────────────────────────────────────────────────────────────────────────
 
     /** Returns the current dataset name, falling back to the first configured dataset. */
     private String resolveCurrentDatasetName() {

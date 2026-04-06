@@ -197,7 +197,18 @@ public class SemanticCacheService {
         if (redisSearchService.isAvailable()) {
             redisSearchService.clear();
         }
-        log.info("Cache cleared (local + Redis)");
+        
+        // Reset micrometer counters by removing and re-registering
+        if (cacheHitCounter != null) {
+            meterRegistry.remove(cacheHitCounter);
+            cacheHitCounter = Counter.builder("cache.hits").description("Number of cache hits").register(meterRegistry);
+        }
+        if (cacheMissCounter != null) {
+            meterRegistry.remove(cacheMissCounter);
+            cacheMissCounter = Counter.builder("cache.misses").description("Number of cache misses").register(meterRegistry);
+        }
+        
+        log.info("Cache cleared (local + Redis + counters)");
     }
 
     public Map<String, Object> getStats() {

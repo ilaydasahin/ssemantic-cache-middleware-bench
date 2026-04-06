@@ -48,28 +48,28 @@ class BenchmarkExperimentTest {
         @Test
         @DisplayName("p50 of [1..10] should be 5")
         void testP50_standardSequence() {
-            List<Long> sorted = Arrays.asList(1L, 2L, 3L, 4L, 5L, 6L, 7L, 8L, 9L, 10L);
+            List<Double> sorted = Arrays.asList(1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0, 10.0);
             assertThat(MetricsCollector.nearestRankPercentile(sorted, 50)).isEqualTo(5.0);
         }
 
         @Test
         @DisplayName("p99 of [1..10] should be 10 (tail latency)")
         void testP99_tailLatency() {
-            List<Long> sorted = Arrays.asList(1L, 2L, 3L, 4L, 5L, 6L, 7L, 8L, 9L, 10L);
+            List<Double> sorted = Arrays.asList(1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0, 10.0);
             assertThat(MetricsCollector.nearestRankPercentile(sorted, 99)).isEqualTo(10.0);
         }
 
         @Test
         @DisplayName("Empty list returns 0 — no ArrayIndexOutOfBoundsException")
         void testPercentile_emptyList_returnsZero() {
-            assertThat(MetricsCollector.nearestRankPercentile(Collections.emptyList(), 99))
+            assertThat(MetricsCollector.nearestRankPercentile(Collections.<Double>emptyList(), 99))
                     .isEqualTo(0.0);
         }
 
         @Test
         @DisplayName("Single-element list — all percentiles return that element")
         void testPercentile_singleElement() {
-            List<Long> single = List.of(42L);
+            List<Double> single = List.of(42.0);
             assertThat(MetricsCollector.nearestRankPercentile(single, 1)).isEqualTo(42.0);
             assertThat(MetricsCollector.nearestRankPercentile(single, 50)).isEqualTo(42.0);
             assertThat(MetricsCollector.nearestRankPercentile(single, 99)).isEqualTo(42.0);

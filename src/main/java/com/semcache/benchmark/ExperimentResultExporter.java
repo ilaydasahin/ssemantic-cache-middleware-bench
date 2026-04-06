@@ -236,9 +236,9 @@ public class ExperimentResultExporter {
             String generatedResponse,
             boolean hit,
             double similarityScore,
-            long totalLatencyMs,
-            long embeddingLatencyMs,
-            long llmLatencyMs) {
+            double totalLatencyMs,
+            double embeddingLatencyMs,
+            double llmLatencyMs) {
     }
 
     /** Signals an unrecoverable failure during result export. */
