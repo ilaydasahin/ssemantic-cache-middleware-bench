@@ -56,7 +56,9 @@ htmlcov/
 .ipynb_checkpoints
 
 # Models (optional - uncomment if models are too large)
-# models/
+models/*/model.onnx
+models/*/tokenizer.json
+models/*/vocab.txt
 
 # Secrets
 secrets/*.yml
