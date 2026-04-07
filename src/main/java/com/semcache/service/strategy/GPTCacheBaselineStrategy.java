@@ -1,6 +1,5 @@
 package com.semcache.service.strategy;
 
-import com.semcache.model.CacheEntry;
 import com.semcache.model.CacheLookupResult;
 import com.semcache.service.CacheContext;
 import com.semcache.service.CacheLookupStrategy;
@@ -44,8 +43,6 @@ public class GPTCacheBaselineStrategy implements CacheLookupStrategy {
 
     @Override
     public CacheLookupResult lookup(String query, CacheContext ctx) {
-        long startTime = System.nanoTime();
-
         try {
             // Simulate GPTCache overhead (Python + Redis roundtrip)
             Thread.sleep(GPTCACHE_OVERHEAD_MS);
