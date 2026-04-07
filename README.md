@@ -455,3 +455,39 @@ Target: >90/100 based on ACM/IEEE criteria
 - Limitations disclosed: ✅
 - Independent verification: ⏳
 
+## Limitations
+
+This study has the following limitations that should be considered when interpreting results:
+
+### 1. Language Coverage
+This study focuses on **English-language queries only**. While the embedding models (BERT-based) can theoretically support multilingual queries, we did not evaluate performance on non-English datasets. Future work should validate semantic caching effectiveness across multiple languages using multilingual embedding models (e.g., XLM-RoBERTa, mBERT).
+
+### 2. Domain Specificity
+Our evaluation uses **general-domain datasets** (MS MARCO, Natural Questions, Quora Question Pairs). Domain-specific applications (medical, legal, financial) may exhibit different cache hit patterns and require domain-adapted embedding models.
+
+### 3. LLM Model Scope
+Experiments use **Ollama-hosted open-source models** (Llama 3.2, Phi-3, Mistral). Commercial LLM APIs (GPT-4, Claude, Gemini) may have different latency characteristics and cost structures. However, the semantic caching approach is model-agnostic and should generalize.
+
+### 4. Dataset Scale
+Datasets are sampled to **10K-100K queries per domain**. Production systems with millions of queries may exhibit different cache dynamics (e.g., long-tail query distributions) and require additional optimization strategies.
+
+### 5. Embedding Model Coverage
+We evaluate three BERT-family models (MiniLM, MPNet, TinyBERT). Newer embedding architectures (e.g., GPT-style embeddings from OpenAI, Cohere) may offer different accuracy-latency tradeoffs.
+
+### 6. Paraphrase Quality
+While we use T5-based paraphrasing and back-translation for dataset generation, real-world query variations may be more diverse. Our semantic similarity validation (0.70 < sim < 0.95) ensures quality but may not capture all linguistic phenomena.
+
+### 7. Baseline Comparisons
+We compare against exact-match caching and no-cache baselines. While we include a GPTCache-style baseline, a comprehensive comparison with all existing semantic caching systems (e.g., Redis Semantic Cache, LangChain cache) is beyond the scope of this work.
+
+### 8. Hardware Environment
+Experiments are conducted on consumer-grade hardware (16GB RAM, 4-core CPU). Enterprise deployments with dedicated GPU acceleration or distributed caching may achieve different performance characteristics.
+
+### 9. Cold Start Performance
+Our evaluation focuses on steady-state cache performance. Cold start scenarios (empty cache) and cache warming strategies are not extensively evaluated.
+
+### 10. Security and Privacy
+This study does not address security concerns (e.g., cache poisoning attacks) or privacy implications (e.g., sensitive data in cached responses). Production deployments should implement appropriate security measures.
+
+For detailed discussion of these limitations and future work directions, see Section 7 of the paper.
+

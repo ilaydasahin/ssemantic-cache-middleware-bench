@@ -24,7 +24,10 @@ public enum CacheStrategy {
     MIDDLEWARE_BASELINE,
 
     /** Cache disabled — all queries go to LLM. Control baseline. */
-    NONE;
+    NONE,
+
+    /** GPTCache-style baseline for SOTA comparison (§5.8). */
+    GPTCACHE_BASELINE;
 
     /**
      * Parses a strategy name from configuration or CLI input.

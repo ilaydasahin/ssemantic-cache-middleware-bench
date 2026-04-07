@@ -1,52 +1,51 @@
 #!/bin/bash
-# Ollama Watchdog - Servisin sürekli çalışmasını garanti eder
-# Kullanım: bash scripts/ollama_watchdog.sh &
+# Ollama Watchdog - Restarts Ollama if it crashes during long experiments
 
-OLLAMA_URL="http://localhost:11434"
-CHECK_INTERVAL=60  # 60 saniyede bir kontrol
-MAX_RESTART_ATTEMPTS=5
-RESTART_COUNT=0
+set -e
 
-echo "🔍 Ollama Watchdog başlatıldı"
-echo "   URL: $OLLAMA_URL"
-echo "   Kontrol aralığı: ${CHECK_INTERVAL}s"
-echo ""
+OLLAMA_URL="http://localhost:11434/api/tags"
+CHECK_INTERVAL=60  # Check every 60 seconds
+MAX_RETRIES=3
+LOG_FILE="logs/ollama_watchdog.log"
+
+mkdir -p logs
+
+echo "🐕 Ollama Watchdog started at $(date)" | tee -a "$LOG_FILE"
+echo "   Monitoring: $OLLAMA_URL" | tee -a "$LOG_FILE"
+echo "   Check interval: ${CHECK_INTERVAL}s" | tee -a "$LOG_FILE"
+echo "" | tee -a "$LOG_FILE"
 
 while true; do
-    # Ollama'nın yanıt verip vermediğini kontrol et
-    if curl -s --max-time 5 "$OLLAMA_URL/api/tags" > /dev/null 2>&1; then
-        # Başarılı - restart counter'ı sıfırla
-        if [ $RESTART_COUNT -gt 0 ]; then
-            echo "✅ Ollama tekrar çalışıyor ($(date))"
-            RESTART_COUNT=0
-        fi
+    if curl -s --max-time 5 "$OLLAMA_URL" > /dev/null 2>&1; then
+        echo "[$(date '+%Y-%m-%d %H:%M:%S')] ✅ Ollama is healthy" >> "$LOG_FILE"
     else
-        # Başarısız - restart gerekli
-        RESTART_COUNT=$((RESTART_COUNT + 1))
-        echo "⚠️  Ollama yanıt vermiyor! (Deneme: $RESTART_COUNT/$MAX_RESTART_ATTEMPTS) - $(date)"
+        echo "[$(date '+%Y-%m-%d %H:%M:%S')] ❌ Ollama is DOWN!" | tee -a "$LOG_FILE"
         
-        if [ $RESTART_COUNT -ge $MAX_RESTART_ATTEMPTS ]; then
-            echo "❌ Maksimum restart denemesi aşıldı. Manuel müdahale gerekli!"
-            echo "   Lütfen kontrol edin: ollama serve"
-            exit 1
-        fi
-        
-        echo "🔄 Ollama yeniden başlatılıyor..."
-        
-        # Mevcut Ollama process'lerini temizle
-        pkill -9 ollama 2>/dev/null
-        sleep 3
-        
-        # Ollama'yı yeniden başlat
-        nohup ollama serve > /tmp/ollama_watchdog.log 2>&1 &
-        sleep 10
-        
-        # Başarılı başlatıldı mı kontrol et
-        if curl -s --max-time 5 "$OLLAMA_URL/api/tags" > /dev/null 2>&1; then
-            echo "✅ Ollama başarıyla yeniden başlatıldı"
-        else
-            echo "❌ Ollama başlatılamadı, bir sonraki denemede tekrar denenecek"
-        fi
+        # Try to restart
+        for i in $(seq 1 $MAX_RETRIES); do
+            echo "[$(date '+%Y-%m-%d %H:%M:%S')] Attempt $i/$MAX_RETRIES: Restarting Ollama..." | tee -a "$LOG_FILE"
+            
+            # Kill existing Ollama processes
+            pkill -9 ollama || true
+            sleep 2
+            
+            # Start Ollama
+            ollama serve > /dev/null 2>&1 &
+            sleep 5
+            
+            # Check if it's up
+            if curl -s --max-time 5 "$OLLAMA_URL" > /dev/null 2>&1; then
+                echo "[$(date '+%Y-%m-%d %H:%M:%S')] ✅ Ollama restarted successfully" | tee -a "$LOG_FILE"
+                break
+            fi
+            
+            if [ $i -eq $MAX_RETRIES ]; then
+                echo "[$(date '+%Y-%m-%d %H:%M:%S')] ❌ Failed to restart Ollama after $MAX_RETRIES attempts" | tee -a "$LOG_FILE"
+                echo "[$(date '+%Y-%m-%d %H:%M:%S')] 🚨 MANUAL INTERVENTION REQUIRED" | tee -a "$LOG_FILE"
+                # Send notification (optional)
+                # osascript -e 'display notification "Ollama watchdog failed" with title "Benchmark Alert"'
+            fi
+        done
     fi
     
     sleep $CHECK_INTERVAL
