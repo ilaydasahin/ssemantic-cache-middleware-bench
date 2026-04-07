@@ -112,7 +112,7 @@ class MetricsCollectorTest {
         // When metrics are calculated
         // Then should handle appropriately
         List<Double> withOutliers = List.of(1.0, 2.0, 3.0, 1000.0);
-        double max = withOutliers.stream().max(Double::compare).orElse(0.0);
+        double max = withOutliers.stream().max(Double::compareTo).orElse(0.0);
         assertThat(max).isEqualTo(1000.0);
     }
 
