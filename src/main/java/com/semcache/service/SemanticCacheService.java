@@ -6,6 +6,7 @@ import com.semcache.model.CacheLookupResult;
 import com.semcache.service.strategy.ExactMatchStrategy;
 import com.semcache.service.strategy.HybridCascadeStrategy;
 import com.semcache.service.strategy.MiddlewareBaselineStrategy;
+import com.semcache.service.strategy.NoCacheStrategy;
 import com.semcache.service.strategy.SemanticStrategy;
 import io.micrometer.core.instrument.Counter;
 import io.micrometer.core.instrument.MeterRegistry;
@@ -105,12 +106,13 @@ public class SemanticCacheService {
         // Validation is already performed by CacheProperties.@PostConstruct
 
         // Build strategy registry — each strategy is stateless and reusable
-        strategies = Map.of(
-                "SEMANTIC",            new SemanticStrategy(embeddingService, redisSearchService),
-                "HYBRID",              new HybridCascadeStrategy(embeddingService),
-                "EXACT_MATCH",         new ExactMatchStrategy(),
-                "MIDDLEWARE_BASELINE", new MiddlewareBaselineStrategy(embeddingService, redisSearchService)
-        );
+        // Q1 Publication: Added NO_CACHE baseline for control comparison
+        strategies = new HashMap<>();
+        strategies.put("SEMANTIC", new SemanticStrategy(embeddingService, redisSearchService));
+        strategies.put("HYBRID", new HybridCascadeStrategy(embeddingService));
+        strategies.put("EXACT_MATCH", new ExactMatchStrategy());
+        strategies.put("MIDDLEWARE_BASELINE", new MiddlewareBaselineStrategy(embeddingService, redisSearchService));
+        strategies.put("NONE", new NoCacheStrategy());  // Q1: Control baseline
 
         log.info("SemanticCacheService initialized: strategy={}, threshold={}, k={}",
                 cacheProperties.getStrategy(),
