@@ -3,7 +3,8 @@ package com.semcache.service.strategy;
 import com.semcache.model.CacheLookupResult;
 import com.semcache.service.CacheContext;
 import com.semcache.service.CacheLookupStrategy;
-import lombok.extern.slf4j.Slf4j;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * NO_CACHE Baseline Strategy - Q1 Publication Requirement
@@ -39,8 +40,9 @@ import lombok.extern.slf4j.Slf4j;
  * @see com.semcache.model.CacheStrategy#NONE
  * @since 1.0.0 (Q1 Publication Update)
  */
-@Slf4j
 public class NoCacheStrategy implements CacheLookupStrategy {
+
+    private static final Logger log = LoggerFactory.getLogger(NoCacheStrategy.class);
 
     /**
      * Always returns a cache miss.
@@ -65,7 +67,7 @@ public class NoCacheStrategy implements CacheLookupStrategy {
         }
 
         // Always return miss - force LLM call
-        return CacheLookupResult.miss();
+        return CacheLookupResult.miss(0, null);
     }
 
     @Override
