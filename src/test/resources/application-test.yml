@@ -1,0 +1,56 @@
+# Test configuration
+# Overrides main application.yml for unit tests
+
+spring:
+  data:
+    redis:
+      host: localhost
+      port: 6379
+      # Use separate DB for tests
+      database: 15
+  main:
+    web-application-type: NONE
+
+cache:
+  hnsw-enabled: false  # Disable HNSW for unit tests
+  similarityThreshold: 0.90
+  max-entries: 1000  # Smaller cache for tests
+  ttl-seconds: 60
+  strategy: SEMANTIC
+
+embedding:
+  model-name: minilm
+  models:
+    minilm:
+      path: models/all-MiniLM-L6-v2/model.onnx
+      tokenizer-path: models/all-MiniLM-L6-v2/vocab.txt
+      dimension: 384
+      max-sequence-length: 128
+
+llm:
+  provider: mock  # Always use mock for tests
+  
+benchmark:
+  seeds: [42]  # Single seed for tests
+  warmup-ratio: 0.30
+  batch-size: 10
+  parallelism: 2
+  datasets:
+    - name: test-dataset
+      path: src/test/resources/test_dataset.jsonl
+      size: 100
+
+# Disable metrics for tests
+management:
+  endpoints:
+    enabled-by-default: false
+  metrics:
+    export:
+      prometheus:
+        enabled: false
+
+# Logging
+logging:
+  level:
+    com.semcache: INFO
+    org.springframework: WARN

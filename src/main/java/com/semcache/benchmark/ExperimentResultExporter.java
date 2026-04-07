@@ -47,7 +47,7 @@ public class ExperimentResultExporter {
     // ─────────────────────────────────────────────────────────────────────────
 
     /**
-     * Writes a complete experiment result to a JSON file.
+     * Writes a complete experiment result to a JSON file with metadata.
      *
      * <p>
      * The output file is structured as a flat JSON object. The
@@ -57,12 +57,14 @@ public class ExperimentResultExporter {
      * @param config    Experimental configuration that produced these results
      * @param metrics   Aggregate metrics from {@link MetricsCollector#compute()}
      * @param queryLogs Per-query observations; may be empty for throughput runs
+     * @param metadata  Extended metadata for reproducibility tracking
      * @throws ExportException if the target directory cannot be created or the
      *                         file cannot be written
      */
     public void export(ExperimentConfig config,
             MetricsCollector.AggregateMetrics metrics,
-            List<QueryLog> queryLogs) {
+            List<QueryLog> queryLogs,
+            ExperimentMetadata metadata) {
 
         if (config.outputFilePath() == null || config.outputFilePath().isBlank()) {
             log.warn("outputFilePath is null — skipping result export");
@@ -81,7 +83,7 @@ public class ExperimentResultExporter {
         }
 
         // Build the combined result envelope
-        Map<String, Object> envelope = buildResultEnvelope(config, metrics);
+        Map<String, Object> envelope = buildResultEnvelope(config, metrics, metadata);
 
         // Synchronized write to prevent concurrent file corruption
         synchronized (this) {
@@ -99,6 +101,15 @@ public class ExperimentResultExporter {
             exportQueryLogs(config.outputFilePath(), queryLogs);
         }
     }
+    
+    /**
+     * Legacy export method without metadata (for backward compatibility).
+     */
+    public void export(ExperimentConfig config,
+            MetricsCollector.AggregateMetrics metrics,
+            List<QueryLog> queryLogs) {
+        export(config, metrics, queryLogs, null);
+    }
 
     // ─────────────────────────────────────────────────────────────────────────
     // Private helpers
@@ -114,7 +125,8 @@ public class ExperimentResultExporter {
      */
     private Map<String, Object> buildResultEnvelope(
             ExperimentConfig config,
-            MetricsCollector.AggregateMetrics m) {
+            MetricsCollector.AggregateMetrics m,
+            ExperimentMetadata metadata) {
 
         // Use a LinkedHashMap to preserve insertion order in the JSON output
         // — more readable for manual inspection
@@ -155,6 +167,11 @@ public class ExperimentResultExporter {
 
         // ── Full config sub-object (for reproducibility) ──────────────────────
         envelope.put("config", config);
+        
+        // ── Extended metadata (for reproducibility and provenance) ────────────
+        if (metadata != null) {
+            envelope.put("metadata", metadata);
+        }
 
         // ── Infrastructure Monitoring (M.6) ──────────────────────────────────
         Map<String, Object> infra = new LinkedHashMap<>();
@@ -163,6 +180,15 @@ public class ExperimentResultExporter {
         envelope.put("infrastructureMetrics", infra);
 
         return envelope;
+    }
+    
+    /**
+     * Legacy method for backward compatibility.
+     */
+    private Map<String, Object> buildResultEnvelope(
+            ExperimentConfig config,
+            MetricsCollector.AggregateMetrics m) {
+        return buildResultEnvelope(config, m, null);
     }
 
     private double getMeterValue(String name, String statistic) {

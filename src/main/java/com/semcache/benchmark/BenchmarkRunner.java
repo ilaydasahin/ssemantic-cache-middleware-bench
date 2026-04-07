@@ -76,6 +76,7 @@ public class BenchmarkRunner {
     private final ExperimentResultExporter resultExporter;
     private final NoiseGenerator noiseGenerator;
     private final CheckpointManager checkpointManager;
+    private final ExperimentValidator experimentValidator;
 
     public BenchmarkRunner(SemanticCacheService cacheService,
             EmbeddingService embeddingService,
@@ -84,7 +85,8 @@ public class BenchmarkRunner {
             MetricsCollector metricsCollector,
             ExperimentResultExporter resultExporter,
             NoiseGenerator noiseGenerator,
-            CheckpointManager checkpointManager) {
+            CheckpointManager checkpointManager,
+            ExperimentValidator experimentValidator) {
         this.cacheService = cacheService;
         this.embeddingService = embeddingService;
         this.llmService = llmService;
@@ -93,6 +95,7 @@ public class BenchmarkRunner {
         this.resultExporter = resultExporter;
         this.noiseGenerator = noiseGenerator;
         this.checkpointManager = checkpointManager;
+        this.experimentValidator = experimentValidator;
     }
 
     // ─────────────────────────────────────────────────────────────────────────
@@ -113,6 +116,34 @@ public class BenchmarkRunner {
      */
     public void run(ExperimentConfig config) throws Exception {
         log.info(config.toLogSummary());
+        
+        // ── Phase 0.1: Pre-flight validation ─────────────────────────────────
+        List<String> validationErrors = experimentValidator.validate(config);
+        if (!validationErrors.isEmpty()) {
+            throw new IllegalArgumentException(
+                "Experiment validation failed: " + String.join("; ", validationErrors));
+        }
+        
+        // ── Phase 0.2: Capture metadata for reproducibility ──────────────────
+        long startTime = System.currentTimeMillis();
+        ExperimentMetadata metadata = ExperimentMetadata.create(config);
+        log.info("System: {} {} ({})", 
+            metadata.system().os(), 
+            metadata.system().osVersion(), 
+            metadata.system().arch());
+        log.info("Java: {} ({})", 
+            metadata.software().javaVersion(), 
+            metadata.software().javaVendor());
+        log.info("Memory: {} MB heap, {} MB total", 
+            metadata.system().maxHeapMB(), 
+            metadata.system().totalMemoryMB());
+        
+        if (metadata.git() != null) {
+            log.info("Git: {} @ {} {}", 
+                metadata.git().branch(), 
+                metadata.git().commitHash().substring(0, Math.min(8, metadata.git().commitHash().length())),
+                metadata.git().isDirty() ? "(dirty)" : "");
+        }
         
         // Generate experiment ID for checkpoint tracking
         String experimentId = CheckpointManager.generateExperimentId(
@@ -170,11 +201,53 @@ public class BenchmarkRunner {
 
         // ── Phase 5: Compute and export results ──────────────────────────────
         AggregateMetrics metrics = metricsCollector.compute();
-        resultExporter.export(config, metrics, queryLogs);
+        
+        // Update metadata with final duration and dataset info
+        long durationSeconds = (System.currentTimeMillis() - startTime) / 1000;
+        metadata = metadata.withDuration(durationSeconds);
+        
+        // Calculate dataset fingerprint
+        try {
+            java.io.File datasetFile = new java.io.File(config.datasetPath());
+            String sha256 = calculateSHA256(datasetFile);
+            ExperimentMetadata.DatasetInfo datasetInfo = new ExperimentMetadata.DatasetInfo(
+                config.datasetName(),
+                config.datasetPath(),
+                datasetFile.length(),
+                split.testSet().size() + split.warmupSet().size(),
+                sha256
+            );
+            metadata = metadata.withDatasetInfo(datasetInfo);
+        } catch (Exception e) {
+            log.warn("Could not calculate dataset fingerprint: {}", e.getMessage());
+        }
+        
+        resultExporter.export(config, metrics, queryLogs, metadata);
         
         // Delete checkpoint after successful completion
         checkpointManager.deleteCheckpoint(experimentId);
-        log.info("✅ Experiment completed successfully: {}", experimentId);
+        log.info("✅ Experiment completed successfully: {} (duration: {}s)", 
+            experimentId, durationSeconds);
+    }
+    
+    /**
+     * Calculates SHA-256 fingerprint of a file for reproducibility tracking.
+     */
+    private String calculateSHA256(java.io.File file) throws Exception {
+        java.security.MessageDigest digest = java.security.MessageDigest.getInstance("SHA-256");
+        try (java.io.FileInputStream fis = new java.io.FileInputStream(file)) {
+            byte[] buffer = new byte[8192];
+            int bytesRead;
+            while ((bytesRead = fis.read(buffer)) != -1) {
+                digest.update(buffer, 0, bytesRead);
+            }
+        }
+        byte[] hashBytes = digest.digest();
+        StringBuilder sb = new StringBuilder();
+        for (byte b : hashBytes) {
+            sb.append(String.format("%02x", b));
+        }
+        return sb.toString();
     }
 
     // ─────────────────────────────────────────────────────────────────────────

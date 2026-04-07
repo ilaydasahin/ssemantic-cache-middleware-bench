@@ -1,0 +1,76 @@
+MIT License
+
+Copyright (c) 2026 [Your Name]
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+
+---
+
+## Third-Party Licenses
+
+This project uses the following third-party libraries:
+
+### Spring Boot
+- License: Apache License 2.0
+- URL: https://spring.io/projects/spring-boot
+
+### ONNX Runtime
+- License: MIT License
+- URL: https://onnxruntime.ai/
+
+### Redis
+- License: BSD 3-Clause License
+- URL: https://redis.io/
+
+### Sentence Transformers
+- License: Apache License 2.0
+- URL: https://www.sbert.net/
+
+### Datasets
+
+#### MS MARCO
+- License: Microsoft Research License
+- URL: https://microsoft.github.io/msmarco/
+- Citation: Nguyen et al., "MS MARCO: A Human Generated MAchine Reading COmprehension Dataset", 2016
+
+#### Natural Questions
+- License: Creative Commons Attribution-ShareAlike 3.0
+- URL: https://ai.google.com/research/NaturalQuestions
+- Citation: Kwiatkowski et al., "Natural Questions: A Benchmark for Question Answering Research", 2019
+
+#### Quora Question Pairs
+- License: Quora Terms of Service
+- URL: https://www.kaggle.com/c/quora-question-pairs
+- Note: For research purposes only
+
+---
+
+## Citation
+
+If you use this software in your research, please cite:
+
+```bibtex
+@software{semantic-cache-2026,
+  author = {[Your Name]},
+  title = {Semantic Cache Benchmark: Production-Grade Middleware for LLM APIs},
+  year = {2026},
+  url = {https://github.com/[your-repo]/semantic-cache-benchmark},
+  version = {1.0.0}
+}
+```

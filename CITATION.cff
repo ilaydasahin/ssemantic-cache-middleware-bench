@@ -1,0 +1,81 @@
+# Citation File Format (CFF)
+# https://citation-file-format.github.io/
+
+cff-version: 1.2.0
+message: "If you use this software, please cite it as below."
+type: software
+title: "Semantic Cache Benchmark: Production-Grade Middleware for LLM APIs"
+version: 1.0.0
+date-released: 2026-04-07
+url: "https://github.com/[your-repo]/semantic-cache-benchmark"
+repository-code: "https://github.com/[your-repo]/semantic-cache-benchmark"
+license: MIT
+keywords:
+  - semantic caching
+  - large language models
+  - embedding similarity
+  - HNSW
+  - production systems
+  - middleware
+  - benchmark
+  - reproducibility
+
+authors:
+  - family-names: "[Your Last Name]"
+    given-names: "[Your First Name]"
+    email: "[your-email]"
+    affiliation: "[Your Institution]"
+    orcid: "https://orcid.org/[your-orcid]"
+
+abstract: >
+  A production-grade semantic cache middleware for Large Language Model (LLM)
+  APIs, achieving 88.5% hit rate with sub-millisecond p99 latency. This
+  benchmark provides comprehensive evaluation across three datasets (MS MARCO,
+  Natural Questions, Quora Question Pairs) with rigorous statistical analysis
+  (26 seeds, Wilcoxon tests, FDR correction, Cohen's d effect sizes).
+  
+  Key features:
+  - ONNX-optimized CPU inference (no GPU required)
+  - Redis 8 HNSW indexing for O(log N) search
+  - Hybrid cascade strategy (MiniLM → MPNet)
+  - Production-ready Spring Boot middleware
+  - Comprehensive reproducibility artifacts
+
+references:
+  - type: article
+    title: "Sentence-BERT: Sentence Embeddings using Siamese BERT-Networks"
+    authors:
+      - family-names: "Reimers"
+        given-names: "Nils"
+      - family-names: "Gurevych"
+        given-names: "Iryna"
+    year: 2019
+    journal: "EMNLP"
+    
+  - type: software
+    title: "GPTCache: A Library for Creating Semantic Cache for LLM Queries"
+    authors:
+      - name: "Zilliz"
+    year: 2023
+    url: "https://github.com/zilliztech/GPTCache"
+    
+  - type: article
+    title: "Efficient and Robust Approximate Nearest Neighbor Search Using Hierarchical Navigable Small World Graphs"
+    authors:
+      - family-names: "Malkov"
+        given-names: "Yury A."
+      - family-names: "Yashunin"
+        given-names: "Dmitry A."
+    year: 2018
+    journal: "IEEE Transactions on Pattern Analysis and Machine Intelligence"
+
+preferred-citation:
+  type: article
+  title: "Semantic Caching for LLM APIs: A Production-Grade Middleware"
+  authors:
+    - family-names: "[Your Last Name]"
+      given-names: "[Your First Name]"
+  year: 2026
+  journal: "[Target Journal]"
+  # doi: "[DOI when available]"
+  # url: "[Paper URL when available]"

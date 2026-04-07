@@ -1,0 +1,5 @@
+{"query": "What is semantic caching?", "answer": "Semantic caching stores query results based on semantic similarity rather than exact string matching.", "paraphrase": "Can you explain what semantic caching means?", "dataset": "test"}
+{"query": "How does HNSW work?", "answer": "HNSW (Hierarchical Navigable Small World) is a graph-based algorithm for approximate nearest neighbor search.", "paraphrase": "Explain the HNSW algorithm", "dataset": "test"}
+{"query": "What is cosine similarity?", "answer": "Cosine similarity measures the cosine of the angle between two vectors, ranging from -1 to 1.", "paraphrase": "Define cosine similarity", "dataset": "test"}
+{"query": "What is an embedding?", "answer": "An embedding is a dense vector representation of text that captures semantic meaning.", "paraphrase": "Explain what embeddings are", "dataset": "test"}
+{"query": "What is Redis?", "answer": "Redis is an in-memory data structure store used as a database, cache, and message broker.", "paraphrase": "Tell me about Redis", "dataset": "test"}

@@ -209,7 +209,8 @@ public class MegaBenchmarkSuiteRunner {
                     try {
                         // Use first seed for throughput tests (deterministic warmup)
                         long throughputSeed = seeds.get(0).longValue();
-                        throughputRunner.runForUsers(users, dataset, outputFile, throughputSeed);
+                        throughputRunner.runForUsers(users, dataset, outputFile, throughputSeed, 
+                                datasetCfg.getName(), strategy);
                         log.info("  ✅ {} completed", trialId);
                     } catch (Exception e) {
                         failed++;

@@ -1,0 +1,24 @@
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+  external_labels:
+    cluster: 'semantic-cache-benchmark'
+    environment: 'research'
+
+scrape_configs:
+  - job_name: 'semcache-app'
+    metrics_path: '/actuator/prometheus'
+    static_configs:
+      - targets: ['semcache:9090']
+        labels:
+          application: 'semantic-cache'
+          
+  - job_name: 'redis'
+    static_configs:
+      - targets: ['redis:6379']
+        labels:
+          service: 'redis'
+
+  - job_name: 'prometheus'
+    static_configs:
+      - targets: ['localhost:9090']

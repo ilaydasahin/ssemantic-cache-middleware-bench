@@ -1,26 +1,154 @@
-# Maven
-target/
+# Compiled class files
 *.class
+target/
 
-# Python
-venv*/
-__pycache__/
-*.pyc
-.ipynb_checkpoints/
+# Log files
+*.log
+logs/*.log
+
+# Package Files
+*.jar
+*.war
+*.nar
+*.ear
+*.zip
+*.tar.gz
+*.rar
+
+# Maven
+.mvn/
+mvnw
+mvnw.cmd
 
 # IDE
 .idea/
+*.iml
+*.iws
+*.ipr
 .vscode/
 *.swp
 *.swo
+*~
 
-# Project specific
-results/
-logs/
-data/
-models/
-checkpoints/
-*.log
+# OS
 .DS_Store
+Thumbs.db
+
+# Results and data (keep structure, ignore content)
+results/*.json
+results/*.jsonl
+results/*.csv
+results/*.png
+results/*.tex
+!results/.gitkeep
+
+# Datasets (large files)
+data/*.jsonl
+!data/.gitkeep
+
+# Models (very large files)
+models/**/*.onnx
+models/**/*.bin
+!models/.gitkeep
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+venv/
+ENV/
+env/
+
+# Jupyter Notebook
+.ipynb_checkpoints
+
+# pyenv
+.python-version
+
+# Environments
 .env
-application-local.yml
+.venv
+env/
+venv/
+ENV/
+env.bak/
+venv.bak/
+
+# Temporary files
+*.tmp
+*.temp
+*.bak
+*.swp
+*.swo
+
+# Checkpoints
+checkpoints/
+*.checkpoint
+
+# System info
+system_info.txt
+
+# Secrets
+*.key
+*.pem
+*.p12
+secrets/
+.secrets
+
+# Ollama models (optional, can be large)
+ollama_models/
+
+# Redis dumps
+dump.rdb
+
+# Coverage reports
+htmlcov/
+.tox/
+.coverage
+.coverage.*
+.cache
+nosetests.xml
+coverage.xml
+*.cover
+.hypothesis/
+.pytest_cache/
+
+# Documentation builds
+docs/_build/
+site/
+
+# Profiling
+*.prof
+*.lprof
+
+# Benchmarking
+benchmark_results/
+*.benchmark
+
+# CRITICAL: API Keys and Secrets (NEVER commit)
+src/main/resources/application-local.yml
+secrets/application-secrets.yml
+secrets/*.key
+secrets/*.pem
+.env
+.env.local
+**/api-keys.txt
+**/*-credentials.json

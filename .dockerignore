@@ -1,0 +1,37 @@
+# Build artifacts
+target/
+*.class
+*.jar
+*.war
+
+# IDE files
+.idea/
+.vscode/
+*.iml
+.DS_Store
+
+# Git
+.git/
+.gitignore
+
+# Logs
+logs/*.log
+results/*.json
+results/*.jsonl
+
+# Secrets (CRITICAL)
+src/main/resources/application-local.yml
+*.key
+*.pem
+.env
+
+# Test files
+src/test/
+
+# Documentation
+*.md
+docs/
+
+# CI/CD
+.github/
+.gitlab-ci.yml
