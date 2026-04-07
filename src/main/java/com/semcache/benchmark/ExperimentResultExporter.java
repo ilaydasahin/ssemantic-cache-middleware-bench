@@ -184,7 +184,9 @@ public class ExperimentResultExporter {
     
     /**
      * Legacy method for backward compatibility.
+     * Used internally for method overloading.
      */
+    @SuppressWarnings("unused")
     private Map<String, Object> buildResultEnvelope(
             ExperimentConfig config,
             MetricsCollector.AggregateMetrics m) {
