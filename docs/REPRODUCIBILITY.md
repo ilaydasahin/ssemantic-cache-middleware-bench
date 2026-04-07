@@ -5,14 +5,14 @@ This document follows ACM/IEEE reproducibility standards for Q1 publication.
 ## ✅ Artifact Availability
 
 ### Code
-- **Repository**: [GitHub URL]
+- **Repository**: https://github.com/ilaydasahin/semantic-cache-middleware-bench
 - **License**: MIT
 - **Version Control**: Git with tagged releases
-- **DOI**: [Zenodo DOI after archival]
+- **DOI**: [Zenodo DOI - to be assigned upon publication]
 
 ### Data
-- **MS MARCO**: Public dataset (Microsoft)
-- **Natural Questions**: Public dataset (Google)
+- **MS MARCO**: Public dataset (Microsoft Research)
+- **Natural Questions**: Public dataset (Google Research)
 - **Quora Question Pairs**: Public dataset (Quora)
 - **Paraphrased Versions**: Generated via `scripts/prepare_datasets.py`
 - **SHA-256 Checksums**: Logged in experiment metadata
@@ -25,21 +25,21 @@ This document follows ACM/IEEE reproducibility standards for Q1 publication.
 
 ## ✅ Environment Specification
 
-### Hardware
-- **CPU**: Logged via `scripts/collect_system_info.sh`
-- **RAM**: Minimum 16 GB (configurable for 8 GB)
-- **Storage**: 10 GB for models + datasets
+### Hardware Requirements
+- **CPU**: Multi-core processor (4+ cores recommended)
+- **RAM**: Minimum 16 GB (8 GB configurable)
+- **Storage**: 10 GB for models and datasets
 - **GPU**: Not required (CPU-only ONNX inference)
 
-### Software
+### Software Dependencies
 - **OS**: macOS, Linux, Windows (Docker available)
 - **Java**: 21 LTS (OpenJDK or Homebrew)
 - **Maven**: 3.8+
-- **Redis**: 8.x (optional, for HNSW)
+- **Redis**: 8.x (optional, for HNSW indexing)
 - **Python**: 3.8+ (for analysis scripts)
-- **Ollama**: Latest (for local LLM)
+- **Ollama**: Latest (for local LLM inference)
 
-### Dependencies
+### Dependency Versions
 All versions locked in `pom.xml`:
 - Spring Boot: 3.5.13
 - ONNX Runtime: 1.24.3
@@ -48,11 +48,11 @@ All versions locked in `pom.xml`:
 - Micrometer: 1.14.2
 
 Python dependencies in `scripts/requirements.txt`:
-- numpy
-- scipy
-- statsmodels
-- matplotlib
-- pandas
+- numpy>=1.21.0
+- scipy>=1.7.0
+- statsmodels>=0.13.0
+- matplotlib>=3.4.0
+- pandas>=1.3.0
 
 ## ✅ Execution Instructions
 
@@ -81,7 +81,7 @@ cd ..
 ./run_q1_comprehensive_benchmark.sh
 ```
 
-### Analysis
+### Statistical Analysis
 ```bash
 cd scripts
 python3 analyze_results.py ../results/q1_comprehensive_*/
@@ -204,7 +204,7 @@ Based on ACM/IEEE criteria:
 ## ✅ Contact
 
 For reproducibility questions or issues:
-- **GitHub Issues**: [Repository URL]/issues
+- **GitHub Issues**: https://github.com/ilaydasahin/semantic-cache-middleware-bench/issues
 - **Email**: [Your Email]
 - **ORCID**: [Your ORCID]
 

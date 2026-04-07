@@ -11,7 +11,7 @@ This project meets Q1 journal standards with:
 - ✅ **Bias Analysis**: Query length, dataset, temporal fairness
 - ✅ **Effect Sizes**: Cohen's d, confidence intervals, FDR correction
 
-See [REPRODUCIBILITY.md](REPRODUCIBILITY.md) and [Q1_PUBLICATION_IMPROVEMENTS.md](Q1_PUBLICATION_IMPROVEMENTS.md) for details.
+See [docs/REPRODUCIBILITY.md](docs/REPRODUCIBILITY.md) and [docs/PUBLICATION_GUIDE.md](docs/PUBLICATION_GUIDE.md) for details.
 
 ## Overview
 
@@ -85,6 +85,7 @@ This downloads ONNX models for MiniLM, MPNet, and TinyBERT.
 cd scripts
 pip install -r requirements.txt
 python prepare_datasets.py
+cd ..
 ```
 
 Generates paraphrased versions of MS MARCO, Natural Questions, and Quora Question Pairs.
@@ -92,13 +93,13 @@ Generates paraphrased versions of MS MARCO, Natural Questions, and Quora Questio
 ### 4. Run Quick Test (5-10 minutes)
 
 ```bash
-./run_ollama_test.sh
+./bin/run_ollama_test.sh
 ```
 
 ### 5. Run Full Benchmark (2-4 hours)
 
 ```bash
-./run_ollama_full_benchmark.sh
+./bin/run_ollama_full_benchmark.sh
 ```
 
 ## Model Options (16 GB RAM)
@@ -142,26 +143,26 @@ benchmark:
 
 ```bash
 # Quick test (5-10 minutes)
-./run_ollama_test.sh
+./bin/run_ollama_test.sh
 
 # Full benchmark (2-4 hours)
-./run_ollama_full_benchmark.sh
+./bin/run_ollama_full_benchmark.sh
 
 # Q1 Publication-Ready Experiments
 # Quick test with 3 seeds (30-45 minutes)
-./run_q1_quick_test.sh
+./bin/run_q1_quick_test.sh
 
 # Full Q1 benchmark with 26 seeds (12-16 hours)
-./run_q1_comprehensive_benchmark.sh
+./bin/run_q1_comprehensive_benchmark.sh
 
 # Q1+ MEGA benchmark with 64 seeds (4-5 DAYS) - Nature/Science level
-./run_q1plus_mega_benchmark.sh
+./bin/run_q1plus_mega_benchmark.sh
 
 # Clean all old results
-./clean_all.sh
+./bin/clean_all.sh
 
 # Test with different model
-OLLAMA_MODEL=phi3 ./run_ollama_test.sh
+OLLAMA_MODEL=phi3 ./bin/run_ollama_test.sh
 ```
 
 ## Performance Optimizations
@@ -247,7 +248,7 @@ This benchmark follows ACM/IEEE reproducibility standards:
 - [x] Multiple testing correction (Benjamini-Hochberg FDR)
 - [x] Effect size reporting (Cohen's d)
 - [x] Bias analysis (query length, dataset, temporal)
-- [x] Reproducibility checklist (see `REPRODUCIBILITY.md`)
+- [x] Reproducibility checklist (see `docs/REPRODUCIBILITY.md`)
 - [x] System information logging (see `scripts/collect_system_info.sh`)
 
 ### 📋 Pre-submission Checklist
@@ -270,7 +271,7 @@ python3 scripts/power_analysis.py --effect-size 0.5
 bash scripts/collect_system_info.sh
 
 # 4. Run full benchmark
-./run_ollama_full_benchmark.sh
+./bin/run_ollama_full_benchmark.sh
 
 # 5. Analyze results with statistical tests
 cd scripts
@@ -347,7 +348,7 @@ Before submitting to a Q1 journal, ensure:
 - [ ] Apply multiple testing correction (Benjamini-Hochberg FDR)
 
 ### Reproducibility
-- [ ] Complete `REPRODUCIBILITY.md` with all details
+- [ ] Complete `docs/REPRODUCIBILITY.md` with all details
 - [ ] Collect system info: `bash scripts/collect_system_info.sh`
 - [ ] Validate environment: `python3 scripts/validate_experiment.py`
 - [ ] Commit all code changes to git
@@ -389,10 +390,10 @@ python3 scripts/validate_experiment.py
 python3 scripts/power_analysis.py --effect-size 0.8
 
 # Step 3: Quick test (verify setup)
-./run_q1_quick_test.sh
+./bin/run_q1_quick_test.sh
 
 # Step 4: Full comprehensive benchmark (12-16 hours)
-./run_q1_comprehensive_benchmark.sh
+./bin/run_q1_comprehensive_benchmark.sh
 
 # Step 5: Statistical analysis
 python3 scripts/analyze_results.py results/q1_comprehensive_*/
