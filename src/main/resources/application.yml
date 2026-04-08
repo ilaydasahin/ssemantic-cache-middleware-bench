@@ -132,17 +132,15 @@ benchmark:
   batch-size: 100
   parallelism: 4
   
-  # Datasets
+  # Datasets (size auto-detected from file, or override with -Dbenchmark.dataset-size=100000)
+  dataset-size: 0  # 0 = auto-detect from file
   datasets:
     - name: msmarco
       path: data/msmarco_sample_with_paraphrases.jsonl
-      size: 10000
     - name: natural-questions
       path: data/nq_sample_with_paraphrases.jsonl
-      size: 10000
     - name: quora-pairs
       path: data/qqp_sample_with_paraphrases.jsonl
-      size: 10000
 
 # ============================================
 # Metrics & Monitoring

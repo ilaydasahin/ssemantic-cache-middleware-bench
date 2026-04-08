@@ -70,14 +70,32 @@ This downloads ONNX models for MiniLM, MPNet, and TinyBERT.
 
 ### 3. Prepare Datasets
 
+**Option A: Quick Test ONLY (10K samples, pattern-based, 5-10 minutes)**
 ```bash
 cd scripts
 pip install -r requirements.txt
 python prepare_datasets.py
 cd ..
 ```
+⚠️ **NOT suitable for Q1 publication** - uses simple pattern-based paraphrasing
 
-Generates paraphrased versions of MS MARCO, Natural Questions, and Quora Question Pairs.
+**Option B: Q1 Publication (100K samples, neural paraphrasing, 2-4 hours) - REQUIRED**
+```bash
+./bin/prepare_100k_datasets.sh
+```
+
+This generates high-quality paraphrases using:
+- **T5-based neural paraphrasing** (ramsrigouthamg/t5_paraphraser)
+- **Back-translation** (EN → DE → EN via MarianMT)
+- **SBERT quality validation** (0.70 < similarity < 0.95)
+- **Lexical diversity check** (Jaccard < 0.8)
+- **Method tracking** (for reproducibility)
+
+Addresses Q1 requirements:
+- ✅ Neural paraphrasing (not pattern-based)
+- ✅ Quality validation (SBERT)
+- ✅ Production-scale (100K)
+- ✅ Semantic equivalence guaranteed
 
 ### 4. Run Quick Test
 
@@ -129,15 +147,19 @@ benchmark:
 ## Available Scripts
 
 ```bash
-# Quick test
+# Quick test (5-10 minutes)
 ./bin/run_ollama_test.sh
 
 # Full benchmark
 ./bin/run_ollama_full_benchmark.sh
 
 # Q1 Publication Experiments
-./bin/run_q1_quick_test.sh
-./bin/run_q1_comprehensive_benchmark.sh
+./bin/run_q1_quick_test.sh                    # 3 seeds, 30-45 min (pilot only)
+./bin/run_q1_comprehensive_benchmark.sh       # 26 seeds, 12-16 hours (Q1 minimum)
+./bin/run_q1plus_mega_benchmark.sh            # 64 seeds, 4-5 days (Q1 recommended)
+
+# Statistical Power Analysis
+cd scripts && python3 power_analysis.py --effect-size 0.8
 
 # Clean results
 ./bin/clean_all.sh
@@ -214,11 +236,34 @@ scripts/
 }
 ```
 
-## Reproducibility
+## Statistical Rigor
 
-This benchmark follows ACM/IEEE reproducibility standards. All experiments are deterministic given the same random seed, dataset, and configuration parameters. Results include full experimental metadata for independent replication.
+This benchmark follows Q1 journal standards for statistical rigor:
 
-For detailed reproducibility information, see [docs/REPRODUCIBILITY.md](docs/REPRODUCIBILITY.md).
+### Sample Size & Power Analysis
+- **Quick Test**: 3 seeds (pilot only, insufficient for publication)
+- **Q1 Minimum**: 26 seeds (80% power for large effects, d≥0.8)
+- **Q1 Recommended**: 64 seeds (80% power for medium effects, d≥0.5)
+- **Power Analysis**: A priori calculation using statsmodels
+
+### Effect Size Reporting
+- Cohen's d with 95% confidence intervals
+- Interpretation: small (0.2), medium (0.5), large (0.8)
+- Post-hoc power analysis for observed effects
+
+### Hypothesis Testing
+- Primary: Wilcoxon signed-rank test (non-parametric)
+- Secondary: Independent t-test (if normality holds)
+- Multiple testing correction: Benjamini-Hochberg FDR
+- Significance level: α=0.05
+
+### Bias Analysis
+- Query length bias (chi-square test)
+- Dataset bias (one-way ANOVA)
+- Temporal bias (two-proportion z-test)
+- Semantic drift (correlation analysis)
+
+For detailed guidance, see [docs/STATISTICAL_POWER_GUIDE.md](docs/STATISTICAL_POWER_GUIDE.md).
 
 ## License
 
