@@ -27,7 +27,7 @@ SEEDS=(
 DATASETS=(msmarco natural-questions quora-pairs)
 EMBEDDING_MODELS=(minilm mpnet tinybert)
 THRESHOLDS=(0.85 0.90 0.95)
-STRATEGIES=(SEMANTIC EXACT_MATCH NONE)
+STRATEGIES=(SEMANTIC EXACT_MATCH GPTCACHE_BASELINE NONE)
 
 echo "📋 Q1+ MEGA Configuration:"
 echo "   LLM Model: $OLLAMA_MODEL"

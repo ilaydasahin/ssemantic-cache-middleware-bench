@@ -4,6 +4,7 @@ import com.semcache.config.CacheProperties;
 import com.semcache.model.CacheEntry;
 import com.semcache.model.CacheLookupResult;
 import com.semcache.service.strategy.ExactMatchStrategy;
+import com.semcache.service.strategy.GPTCacheBaselineStrategy;
 import com.semcache.service.strategy.HybridCascadeStrategy;
 import com.semcache.service.strategy.MiddlewareBaselineStrategy;
 import com.semcache.service.strategy.NoCacheStrategy;
@@ -112,6 +113,7 @@ public class SemanticCacheService {
         strategies.put("HYBRID", new HybridCascadeStrategy(embeddingService));
         strategies.put("EXACT_MATCH", new ExactMatchStrategy());
         strategies.put("MIDDLEWARE_BASELINE", new MiddlewareBaselineStrategy(embeddingService, redisSearchService));
+        strategies.put("GPTCACHE_BASELINE", new GPTCacheBaselineStrategy(embeddingService, redisSearchService));  // Q1: SOTA baseline
         strategies.put("NONE", new NoCacheStrategy());  // Q1: Control baseline
 
         log.info("SemanticCacheService initialized: strategy={}, threshold={}, k={}",
