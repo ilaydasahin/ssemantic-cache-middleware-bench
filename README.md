@@ -188,6 +188,9 @@ cd scripts && python3 power_analysis.py --effect-size 0.8
 # Unit tests
 mvn test
 
+# Test coverage report (Q1 requirement: ≥80%)
+./bin/run_coverage_report.sh
+
 # Compile
 mvn compile
 
@@ -198,6 +201,20 @@ mvn compile
 mvn spring-boot:run -Dspring-boot.run.profiles=benchmark,benchmark-mock \
   -Dbenchmark.current-dataset=msmarco \
   -Dbenchmark.current-seed=42
+```
+
+### Test Coverage
+
+- **Current Coverage**: 45% (line coverage)
+- **Target Coverage**: 80% (Q1 requirement)
+- **Test Framework**: JUnit 5 + Mockito + AssertJ
+- **Coverage Tool**: JaCoCo
+- **Test Count**: 18 test classes
+
+View detailed coverage report:
+```bash
+./bin/run_coverage_report.sh
+open target/site/jacoco/index.html
 ```
 
 ## Project Structure
