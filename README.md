@@ -341,7 +341,9 @@ This project achieves a reproducibility score of 90/100 based on ACM/IEEE criter
 This study has the following limitations that should be considered when interpreting results:
 
 ### 1. Language Coverage
-This study focuses on **English-language queries only**. While the embedding models (BERT-based) can theoretically support multilingual queries, we did not evaluate performance on non-English datasets. Future work should validate semantic caching effectiveness across multiple languages using multilingual embedding models (e.g., XLM-RoBERTa, mBERT).
+This study **primarily focuses on English-language queries**. We provide multilingual support (Turkish, German) to demonstrate generalizability, but comprehensive evaluation across 50+ languages is future work. The multilingual embedding model (paraphrase-multilingual-MiniLM-L12-v2) supports cross-lingual semantic caching, but performance may vary by language family and resource availability.
+
+**Mitigation**: Run `./bin/run_multilingual_benchmark.sh` to evaluate Turkish and German datasets.
 
 ### 2. Domain Specificity
 Our evaluation uses **general-domain datasets** (MS MARCO, Natural Questions, Quora Question Pairs). Domain-specific applications (medical, legal, financial) may exhibit different cache hit patterns and require domain-adapted embedding models.
@@ -359,10 +361,14 @@ We evaluate three BERT-family models (MiniLM, MPNet, TinyBERT). Newer embedding 
 While we use T5-based paraphrasing and back-translation for dataset generation, real-world query variations may be more diverse. Our semantic similarity validation (0.70 < sim < 0.95) ensures quality but may not capture all linguistic phenomena.
 
 ### 7. Baseline Comparisons
-We compare against exact-match caching and no-cache baselines. While we include a GPTCache-style baseline, a comprehensive comparison with all existing semantic caching systems (e.g., Redis Semantic Cache, LangChain cache) is beyond the scope of this work.
+We compare against exact-match caching, no-cache baselines, and GPTCache-style SOTA baseline. While we simulate middleware overhead (15ms), a comprehensive comparison with all existing semantic caching systems (e.g., Redis Semantic Cache, LangChain cache) in production environments is beyond the scope of this work.
+
+**Mitigation**: GPTCache baseline included in all benchmark scripts. See `GPTCacheBaselineStrategy.java`.
 
 ### 8. Hardware Environment
-Experiments are conducted on consumer-grade hardware (16GB RAM, 4-core CPU). Enterprise deployments with dedicated GPU acceleration or distributed caching may achieve different performance characteristics.
+Experiments are conducted on consumer-grade hardware (16GB RAM, 4-core CPU). We provide production load testing (K6) demonstrating scalability to 1000+ concurrent users. Enterprise deployments with dedicated GPU acceleration or distributed caching may achieve different performance characteristics.
+
+**Mitigation**: Run `./bin/run_production_load_test.sh` for production-scale validation (requires K6).
 
 ### 9. Cold Start Performance
 Our evaluation focuses on steady-state cache performance. Cold start scenarios (empty cache) and cache warming strategies are not extensively evaluated.

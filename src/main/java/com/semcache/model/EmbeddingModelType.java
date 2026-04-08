@@ -13,7 +13,10 @@ public enum EmbeddingModelType {
     MPNET("all-mpnet-base-v2", 768, 384),
     
     /** 312-dimensional, extremely fast model for constrained environments. */
-    TINYBERT("paraphrase-TinyBERT-L6-v2", 312, 128);
+    TINYBERT("paraphrase-TinyBERT-L6-v2", 312, 128),
+    
+    /** 384-dimensional multilingual model supporting 50+ languages (Q1: Multi-language support). */
+    MULTILINGUAL_MINILM("paraphrase-multilingual-MiniLM-L12-v2", 384, 128);
 
     private final String directoryName;
     private final int dimension;
