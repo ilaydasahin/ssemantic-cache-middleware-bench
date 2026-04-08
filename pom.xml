@@ -130,6 +130,13 @@
             <version>3.27.3</version>
             <scope>test</scope>
         </dependency>
+        
+        <!-- Reactor Test for reactive testing -->
+        <dependency>
+            <groupId>io.projectreactor</groupId>
+            <artifactId>reactor-test</artifactId>
+            <scope>test</scope>
+        </dependency>
     </dependencies>
     
     <profiles>

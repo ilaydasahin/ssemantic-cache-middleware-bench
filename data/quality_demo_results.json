@@ -1,0 +1,131 @@
+{
+  "examples": [
+    {
+      "original": "How do I reset my password?",
+      "t5": "How can I reset my password?",
+      "backtrans": "How do I reset the password?",
+      "pattern": "Give me steps to reset my password"
+    },
+    {
+      "original": "What is machine learning?",
+      "t5": "What does machine learning mean?",
+      "backtrans": "What is the machine learning?",
+      "pattern": "Can you provide details on machine learning"
+    },
+    {
+      "original": "Why does my computer run slow?",
+      "t5": "Why is my computer running slowly?",
+      "backtrans": "Why is my computer slow?",
+      "pattern": "Explain the reason that my computer run slow"
+    },
+    {
+      "original": "How to train a neural network?",
+      "t5": "How do you train a neural network?",
+      "backtrans": "How do I train a neural network?",
+      "pattern": "Give me steps to train a neural network"
+    },
+    {
+      "original": "What are the benefits of exercise?",
+      "t5": "What are the advantages of exercise?",
+      "backtrans": "What are the benefits of physical exercise?",
+      "pattern": "Can you provide details on the benefits of exercise"
+    }
+  ],
+  "results": [
+    {
+      "method": "t5",
+      "similarity": 0.9916762709617615,
+      "jaccard": 0.7142857142857143,
+      "valid": false
+    },
+    {
+      "method": "backtrans",
+      "similarity": 0.9717569947242737,
+      "jaccard": 0.7142857142857143,
+      "valid": false
+    },
+    {
+      "method": "pattern",
+      "similarity": 0.8940920829772949,
+      "jaccard": 0.18181818181818182,
+      "valid": true
+    },
+    {
+      "method": "t5",
+      "similarity": 0.944261372089386,
+      "jaccard": 0.2857142857142857,
+      "valid": true
+    },
+    {
+      "method": "backtrans",
+      "similarity": 0.9650746583938599,
+      "jaccard": 0.8,
+      "valid": false
+    },
+    {
+      "method": "pattern",
+      "similarity": 0.8097858428955078,
+      "jaccard": 0.1,
+      "valid": true
+    },
+    {
+      "method": "t5",
+      "similarity": 0.9481062293052673,
+      "jaccard": 0.3333333333333333,
+      "valid": true
+    },
+    {
+      "method": "backtrans",
+      "similarity": 0.9276976585388184,
+      "jaccard": 0.5714285714285714,
+      "valid": true
+    },
+    {
+      "method": "pattern",
+      "similarity": 0.9276012182235718,
+      "jaccard": 0.2727272727272727,
+      "valid": true
+    },
+    {
+      "method": "t5",
+      "similarity": 0.9508820176124573,
+      "jaccard": 0.625,
+      "valid": false
+    },
+    {
+      "method": "backtrans",
+      "similarity": 0.9865535497665405,
+      "jaccard": 0.625,
+      "valid": false
+    },
+    {
+      "method": "pattern",
+      "similarity": 0.8830069899559021,
+      "jaccard": 0.4,
+      "valid": true
+    },
+    {
+      "method": "t5",
+      "similarity": 0.9565714597702026,
+      "jaccard": 0.7142857142857143,
+      "valid": false
+    },
+    {
+      "method": "backtrans",
+      "similarity": 0.9580317139625549,
+      "jaccard": 0.8571428571428571,
+      "valid": false
+    },
+    {
+      "method": "pattern",
+      "similarity": 0.9345653653144836,
+      "jaccard": 0.25,
+      "valid": true
+    }
+  ],
+  "summary": {
+    "t5_valid_pct": 40.0,
+    "backtrans_valid_pct": 20.0,
+    "pattern_valid_pct": 100.0
+  }
+}
