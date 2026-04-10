@@ -165,74 +165,129 @@ def generate_paraphrases_neural(input_path: str, output_path: str, seed: int):
     
     # Load models
     print("  Loading T5-base for paraphrasing...")
-    t5_model = T5ForConditionalGeneration.from_pretrained("t5-base")
+    device = "cuda" if torch.cuda.is_available() else "cpu"
+    t5_model = T5ForConditionalGeneration.from_pretrained("t5-base").to(device)
     t5_tokenizer = T5Tokenizer.from_pretrained("t5-base")
     
-    print("  Loading MarianMT for back-translation...")
-    en_de_model = MarianMTModel.from_pretrained("Helsinki-NLP/opus-mt-en-de")
+    print("  Loading MarianMT for back-translation (en<->de, en<->fr)...")
+    en_de_model = MarianMTModel.from_pretrained("Helsinki-NLP/opus-mt-en-de").to(device)
     en_de_tokenizer = MarianTokenizer.from_pretrained("Helsinki-NLP/opus-mt-en-de")
-    de_en_model = MarianMTModel.from_pretrained("Helsinki-NLP/opus-mt-de-en")
+    de_en_model = MarianMTModel.from_pretrained("Helsinki-NLP/opus-mt-de-en").to(device)
     de_en_tokenizer = MarianTokenizer.from_pretrained("Helsinki-NLP/opus-mt-de-en")
     
+    en_fr_model = MarianMTModel.from_pretrained("Helsinki-NLP/opus-mt-en-fr").to(device)
+    en_fr_tokenizer = MarianTokenizer.from_pretrained("Helsinki-NLP/opus-mt-en-fr")
+    fr_en_model = MarianMTModel.from_pretrained("Helsinki-NLP/opus-mt-fr-en").to(device)
+    fr_en_tokenizer = MarianTokenizer.from_pretrained("Helsinki-NLP/opus-mt-fr-en")
+    
     print("  Loading SBERT for validation...")
-    sbert = SentenceTransformer('all-MiniLM-L6-v2')
+    sbert = SentenceTransformer('all-MiniLM-L6-v2').to(device)
     
     torch.manual_seed(seed)
+    rng = random.Random(seed)
+    
+    method_counts = {"t5": 0, "backtranslation": 0, "fallback": 0}
     
     with open(input_path, "r") as fin, open(output_path, "w") as fout:
         for i, line in enumerate(tqdm(fin, desc="Paraphrasing")):
             record = json.loads(line)
             query = record["query"]
             
-            # Method 1: T5 paraphrasing
-            input_text = f"paraphrase: {query}"
-            inputs = t5_tokenizer(input_text, return_tensors="pt", max_length=128, truncation=True)
-            outputs = t5_model.generate(
-                inputs.input_ids,
-                max_length=128,
-                num_beams=5,
-                num_return_sequences=3,
-                temperature=0.7,
-                do_sample=True,
-                top_k=50,
-                top_p=0.95
-            )
-            t5_paraphrases = [t5_tokenizer.decode(out, skip_special_tokens=True) for out in outputs]
+            # Method 1: T5 paraphrasing (70% of samples)
+            candidates = []
+            method_used = "fallback"
             
-            # Method 2: Back-translation (en->de->en)
-            de_tokens = en_de_tokenizer(query, return_tensors="pt", padding=True, truncation=True)
-            de_output = en_de_model.generate(**de_tokens)
-            german = en_de_tokenizer.decode(de_output[0], skip_special_tokens=True)
+            if rng.random() < 0.70:  # 70% T5
+                try:
+                    input_text = f"paraphrase: {query}"
+                    inputs = t5_tokenizer(input_text, return_tensors="pt", max_length=128, truncation=True).to(device)
+                    outputs = t5_model.generate(
+                        inputs.input_ids,
+                        max_length=128,
+                        num_beams=5,
+                        num_return_sequences=3,
+                        temperature=0.7,
+                        do_sample=True,
+                        top_k=50,
+                        top_p=0.95
+                    )
+                    t5_paraphrases = [t5_tokenizer.decode(out, skip_special_tokens=True) for out in outputs]
+                    candidates.extend(t5_paraphrases)
+                    method_used = "t5"
+                except Exception as e:
+                    print(f"  ⚠️  T5 failed for query {i}: {e}")
             
-            en_tokens = de_en_tokenizer(german, return_tensors="pt", padding=True, truncation=True)
-            en_output = de_en_model.generate(**en_tokens)
-            back_translated = de_en_tokenizer.decode(en_output[0], skip_special_tokens=True)
+            # Method 2: Back-translation (30% of samples)
+            if rng.random() < 0.30 or len(candidates) == 0:
+                try:
+                    # Randomly choose German or French
+                    if rng.random() < 0.5:
+                        # en->de->en
+                        de_tokens = en_de_tokenizer(query, return_tensors="pt", padding=True, truncation=True).to(device)
+                        de_output = en_de_model.generate(**de_tokens)
+                        intermediate = en_de_tokenizer.decode(de_output[0], skip_special_tokens=True)
+                        
+                        en_tokens = de_en_tokenizer(intermediate, return_tensors="pt", padding=True, truncation=True).to(device)
+                        en_output = de_en_model.generate(**en_tokens)
+                        back_translated = de_en_tokenizer.decode(en_output[0], skip_special_tokens=True)
+                    else:
+                        # en->fr->en
+                        fr_tokens = en_fr_tokenizer(query, return_tensors="pt", padding=True, truncation=True).to(device)
+                        fr_output = en_fr_model.generate(**fr_tokens)
+                        intermediate = en_fr_tokenizer.decode(fr_output[0], skip_special_tokens=True)
+                        
+                        en_tokens = fr_en_tokenizer(intermediate, return_tensors="pt", padding=True, truncation=True).to(device)
+                        en_output = fr_en_model.generate(**en_tokens)
+                        back_translated = fr_en_tokenizer.decode(en_output[0], skip_special_tokens=True)
+                    
+                    candidates.append(back_translated)
+                    if method_used == "fallback":
+                        method_used = "backtranslation"
+                except Exception as e:
+                    print(f"  ⚠️  Back-translation failed for query {i}: {e}")
             
-            # Combine candidates
-            candidates = t5_paraphrases + [back_translated]
-            
-            # SBERT validation: select paraphrase with similarity 0.75-0.95
+            # SBERT validation: select paraphrase with similarity 0.70-0.95
             query_emb = sbert.encode(query, convert_to_tensor=True)
             best_paraphrase = query
             best_score = 0.0
+            best_overlap = 1.0
             
             for candidate in candidates:
                 if candidate.strip() and candidate != query:
                     cand_emb = sbert.encode(candidate, convert_to_tensor=True)
                     sim = util.cos_sim(query_emb, cand_emb).item()
                     
-                    # Target: high similarity but not identical
-                    if 0.75 <= sim <= 0.95 and abs(sim - 0.85) < abs(best_score - 0.85):
-                        best_paraphrase = candidate
-                        best_score = sim
+                    # Calculate lexical overlap (Jaccard)
+                    query_tokens = set(query.lower().split())
+                    cand_tokens = set(candidate.lower().split())
+                    overlap = len(query_tokens & cand_tokens) / len(query_tokens | cand_tokens) if query_tokens | cand_tokens else 1.0
+                    
+                    # Target: high similarity (0.70-0.95) but low overlap (<0.8)
+                    if 0.70 <= sim <= 0.95 and overlap < 0.8:
+                        # Prefer candidates closer to 0.85 similarity
+                        if abs(sim - 0.85) < abs(best_score - 0.85):
+                            best_paraphrase = candidate
+                            best_score = sim
+                            best_overlap = overlap
+            
+            # Fallback if no valid candidate found
+            if best_score == 0.0:
+                best_paraphrase = query
+                best_score = 1.0
+                best_overlap = 1.0
+                method_used = "fallback"
+            
+            method_counts[method_used] += 1
             
             record["paraphrase"] = best_paraphrase
-            record["paraphrase_method"] = "neural"
-            record["paraphrase_similarity"] = float(best_score)
+            record["paraphrase_method"] = method_used
+            record["paraphrase_semantic_similarity"] = float(best_score)
+            record["paraphrase_lexical_overlap"] = float(best_overlap)
             record["paraphrase_seed"] = seed + i
             fout.write(json.dumps(record) + "\n")
     
     print(f"  ✅ Neural paraphrases saved to {output_path}")
+    print(f"  Method distribution: T5={method_counts['t5']}, Back-translation={method_counts['backtranslation']}, Fallback={method_counts['fallback']}")
 
 
 def generate_paraphrases_fallback(input_path: str, output_path: str, seed: int):
@@ -287,7 +342,7 @@ def main():
     parser = argparse.ArgumentParser(description="Prepare benchmark datasets")
     parser.add_argument("--output-dir", default="data", help="Output directory")
     parser.add_argument(
-        "--sample-size", type=int, default=100000, help="Samples per dataset (default: 100K for Q1)"
+        "--sample-size", type=int, default=50000, help="Samples per dataset (default: 50K for Q1)"
     )
     parser.add_argument("--seed", type=int, default=42, help="Random seed")
     args = parser.parse_args()
