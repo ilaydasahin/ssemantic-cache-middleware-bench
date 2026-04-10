@@ -8,8 +8,9 @@ set -e
 DATASET="msmarco"
 OUTPUT_DIR="results/raw"
 
-# M.7: Minimum 5 runs required for significance testing
-SEEDS=(42 123 999 1024 2048)
+# Q1 PUBLICATION: 26 seeds minimum for d=0.8, 80% power
+# Use 64 seeds for robust medium effect detection (d=0.5)
+SEEDS=(42 123 999 1024 2048 3141 5926 5358 9793 2384 6264 3383 2795 288 4197 1693 9937 5105 8209 7494 4592 3078 1640 6286 2089 9862)
 STRATEGIES=("EXACT_MATCH" "SEMANTIC" "HYBRID")
 
 echo "====================================================="

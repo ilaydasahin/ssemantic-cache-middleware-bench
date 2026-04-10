@@ -113,7 +113,7 @@ public class SemanticCacheService {
         strategies.put("HYBRID", new HybridCascadeStrategy(embeddingService));
         strategies.put("EXACT_MATCH", new ExactMatchStrategy());
         strategies.put("MIDDLEWARE_BASELINE", new MiddlewareBaselineStrategy(embeddingService, redisSearchService));
-        strategies.put("GPTCACHE_BASELINE", new GPTCacheBaselineStrategy(embeddingService, redisSearchService));  // Q1: SOTA baseline
+        strategies.put("GPTCACHE_BASELINE", new GPTCacheBaselineStrategy(embeddingService));  // Q1: SOTA baseline
         strategies.put("NONE", new NoCacheStrategy());  // Q1: Control baseline
 
         log.info("SemanticCacheService initialized: strategy={}, threshold={}, k={}",

@@ -18,7 +18,9 @@ import glob
 import re
 import numpy as np  # pyre-ignore
 import pandas as pd  # pyre-ignore
-from scipy import stats  # pyre-ignore
+from scipy import stats
+from statsmodels.stats.multitest import multipletests
+import numpy as np  # pyre-ignore
 from sentence_transformers import SentenceTransformer, util  # pyre-ignore
 import torch  # pyre-ignore
 
